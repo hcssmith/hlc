@@ -1,0 +1,5 @@
+{
+  "collections": [
+    { "name": "hlc", "path": "./src/lib" }
+  ]
+}
