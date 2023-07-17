@@ -13,10 +13,7 @@ example_enum :: enum {
 
 main :: proc() {
 
-  datafile: df.DataFile
-
-
-  df.new_datafile(&datafile)
+  datafile:=df.new_datafile()
 
   datafile->Read("./test.dat")
 
@@ -54,15 +51,6 @@ main :: proc() {
   a= ct.Pop(string, stack).? or_else ""
   fmt.printf("{0}\n", a)
 
-  pbuf := bf.make_ptr_buffer(int)
-
-  a1 := new(int)
-  a2 := new(int)
-
-  bf.ptr_Add(int, pbuf, a1)
-  bf.ptr_Add(int, pbuf, a2)
-
-  fmt.printf("Ptr Buf: {0}\n", pbuf)
 
   
 }

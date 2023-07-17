@@ -51,7 +51,10 @@ DataFile :: struct {
 ROOTOBJECTID :: "_ROOT_OBJECT_DO_NOT_USE_AS_AN_IDENTTIFIER"
 
 
-new_datafile :: proc(df: ^DataFile) {
+new_datafile :: proc() -> ^DataFile{
+  df := new(DataFile)
+  df.p_NodeSet = make(map[NodeName]^DataFile)
+  df.p_EntityMap = make(map[EntityName]Entity)
   //Initialize Functions
   df.GetString = getString
   df.GetInt = getInt
@@ -61,6 +64,7 @@ new_datafile :: proc(df: ^DataFile) {
   df.Node = node
   df.AddNode = addnode
   df.Read = read
+  return df
 }
 
 @(private)
@@ -85,7 +89,7 @@ read :: proc(df: ^DataFile, dn: FileName) -> bool {
 
   for x:=0;x<len(tokens);x+=1 
   {
-    switch v in tokens[x] {
+    #partial switch v in tokens[x] {
       case KnownToken:
     }
   }
@@ -114,8 +118,7 @@ addnode :: proc(df: ^DataFile, nn: NodeName, n:^DataFile) {
 
 @(private)
 createnode :: proc(df: ^DataFile, nn: NodeName) {
-  node:= new(DataFile)
-  new_datafile(node)
+  node:= new_datafile()
   df.p_NodeSet[nn] = node
 }
 
