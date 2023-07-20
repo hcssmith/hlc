@@ -23,6 +23,7 @@ DataFile :: struct {
   GetNodeByID: proc(^DataFile, int) -> ^Node,
   GetString: proc(^DataFile, string) -> string,
   SetString: proc(^DataFile, string, string),
+  Save: proc(^DataFile, string),
   }
 
 // df->SetString("this.is.a.path", "This is a value")
@@ -115,11 +116,63 @@ make_datafile :: proc() -> DataFile {
   df.GetNodeByID = GetNodeByID
   df.SetString = SetString
   df.GetString = GetString
+  df.Save = Save
   return df^
   }
 
-load :: proc(file: string) -> DataFile {
+Save :: proc(df: ^DataFile, filename: string) {
+  fd, _ := os.open(filename, os.O_CREATE | os.O_WRONLY | os.O_TRUNC, os.S_IRUSR | os.S_IWUSR | os.S_IRGRP | os.S_IWGRP)
+  defer os.close(fd)
+  os.write_string(fd, node_to_string(df, df.RootNode))
+  }
+
+node_to_string :: proc(df: ^DataFile, current_node_id: int, indent_count:int=0) -> string {
+  ib := strings.builder_make() 
+  ic := indent_count
+  for {
+    if  ic == 0 {break}
+    strings.write_string(&ib, "\t")
+    ic-=1
+    }
+    indent := strings.to_string(ib)
+  
+  sb := strings.builder_make()
+  cn := df->GetNodeByID(current_node_id)
+
+  if cn.Name == ROOTOBJECTID {
+    strings.write_string(&sb, "{\n")
+    for child in cn.Children {
+      strings.write_string(&sb, node_to_string(df, child, indent_count +1) )
+    }
+    strings.write_string(&sb, "}\n")
+    return strings.to_string(sb)
+  }
+
+  if cn.Value != "" {
+    fmt.sbprintf(&sb, "{0}{1} <- {2}\n",indent, cn.Name, cn.Value)
+  } else {
+    fmt.sbprintf(&sb, "{0}{1}\n{2}{{\n", indent, cn.Name, indent)
+    for child in cn.Children {
+      strings.write_string(&sb, node_to_string(df, child, indent_count +1))
+    }
+    fmt.sbprintf(&sb, "{0}}}\n", indent)
+  }
+  return strings.to_string(sb)
+}
+
+load :: proc(file: string = "") -> DataFile {
   df := make_datafile()
+  
+  root_node := new_node()
+  df->AddNode(root_node)
+
+  root_node.Name = ROOTOBJECTID
+  root_node.Value = ROOTOBJECTID
+
+  df.RootNode = root_node.ID
+
+
+  if file == "" { return df }
   fd, _ := os.open(file)
   defer os.close(fd)
   size, _ := os.file_size(fd)
@@ -132,15 +185,6 @@ load :: proc(file: string) -> DataFile {
   token_map["//"] = KnownToken.Comment
   token_map["{"] = KnownToken.OpenObject
   token_map["}-"] = KnownToken.CloseObject
-
-  root_node := new_node()
-
-  df->AddNode(root_node)
-
-  root_node.Name = ROOTOBJECTID
-  root_node.Value = ROOTOBJECTID
-
-  df.RootNode = root_node.ID
 
 
   tokens := tokeniser.tokeniser(KnownToken, token_map, string(data))

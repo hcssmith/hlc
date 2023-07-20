@@ -1,0 +1,11 @@
+{
+	node
+	{
+		step1
+		{
+			string1 <- This is some other text
+			string2 <-  This is other set of text
+			string3 <- This is other set of text point 2
+		}
+	}
+}

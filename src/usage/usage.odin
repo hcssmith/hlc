@@ -13,15 +13,13 @@ example_enum :: enum {
 
 main :: proc() {
 
-  d := df.load("test.dat")
+  d := df.load("test2.dat")
 
-  d->SetString("node.step1.string1", "This is some further text")
-  d->SetString("node.step1.string2", "This is other set of text")
+  d->SetString("node.step1.string1", "This is some other text")
+  d->SetString("node.step1.string3", "This is other set of text point 2")
 
-  fmt.printf("GetString:{0}\n", d->GetString("node.step1.string1"))
 
-  for node in d.NodeCollection {
-    fmt.printf("Node:{0}\nChildern{1}\nName:{2}\nValue:{3}\n\n\n", node.ID, node.Children, node.Name, node.Value)
-  }
+  d->Save("test2.dat")
+
 
 }
