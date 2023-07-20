@@ -25,6 +25,45 @@ DataFile :: struct {
   SetString: proc(^DataFile, string, string),
   }
 
+// df->SetString("this.is.a.path", "This is a value")
+SetString :: proc(df: ^DataFile, key: string, value:string) {
+  path := strings.split(key, ".")
+  rn := df->GetNodeByID(df.RootNode)
+  cn := rn
+  path_loop: for step in path {
+    for id in cn.Children {
+      wn := df->GetNodeByID(id)
+      if wn.Name == step {
+        cn = wn
+        continue path_loop 
+      }
+    }
+    nn := new_node()
+    nn.Name = step
+    df->AddNode(nn)
+    cn->AddChild(nn)
+    cn = nn
+  }
+  cn.Value = value
+}
+
+GetString :: proc(df: ^DataFile, key: string) -> string {
+  path := strings.split(key, ".")
+  rn := df->GetNodeByID(df.RootNode)
+  cn := rn
+  path_loop: for step in path {
+    for id in cn.Children {
+      wn := df->GetNodeByID(id)
+      if wn.Name == step {
+        cn = wn
+        continue path_loop 
+      }
+    }
+    return ""
+  }
+  return cn.Value
+}
+
 
 GetNodeByID :: proc(s: ^DataFile, i: int) -> ^Node {
   for node in s.NodeCollection {
@@ -74,6 +113,8 @@ make_datafile :: proc() -> DataFile {
   df.NodeCollection = make([dynamic]^Node)
   df.AddNode = AddNode
   df.GetNodeByID = GetNodeByID
+  df.SetString = SetString
+  df.GetString = GetString
   return df^
   }
 
@@ -120,7 +161,6 @@ load :: proc(file: string) -> DataFile {
       case KnownToken:
         switch token.(KnownToken) {
           case .OpenObject:
-            fmt.printf("OpenObjectToken\n")
             if cn.Name == ROOTOBJECTID && !skipped { skipped=true; continue } //Skip first object
             n := new_node()
             n.Name = last_ident
