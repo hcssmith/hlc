@@ -2,7 +2,7 @@
 
   text <- this is some text
 
-  node
+  node 
   {
     something <- this is the way
   }

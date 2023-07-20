@@ -13,44 +13,10 @@ example_enum :: enum {
 
 main :: proc() {
 
-  datafile:=df.new_datafile()
+  d := df.load("test.dat")
 
-  datafile->Read("./test.dat")
+  for node in d.NodeCollection {
+    fmt.printf("Node:{0}\nChildern{1}\nName:{2}\nValue:{3}\n\n\n", node.ID, node.Children, node.Name, node.Value)
+  }
 
-  runebuf := bf.make_runebuffer() 
-  runebuf->Add('5')
-
-  fmt.printf("{0}\n", runebuf)
-  fmt.printf("{0}\n", runebuf->ToString())
-
-  test: tk.Token(int)
-  test = "one"
-  fmt.printf("{0}\n", test)
-  test = 6 
-  fmt.printf("{0}\n", test)
-
-  mp := make(map[string]example_enum)
-  mp["1"] = .OneEntry
-  p := tk.tokeniser(example_enum, mp, "1 identifier")
-
-  fmt.printf("{0}\n", p)
-
-
-  stack := ct.make_stack(string)
-
-  ct.Push(string, stack, "First")
-  ct.Push(string, stack, "Second")
-  ct.Push(string, stack, "Third")
-
-  a:= ct.Skim(string, stack).?
-  fmt.printf("{0}\n", a)
-  a= ct.Pop(string, stack).?
-  fmt.printf("{0}\n", a)
-  a= ct.Pop(string, stack).?
-  fmt.printf("{0}\n", a)
-  a= ct.Pop(string, stack).? or_else ""
-  fmt.printf("{0}\n", a)
-
-
-  
 }

@@ -1,4 +1,4 @@
-package parser
+package tokeniser
 
 import "core:text/scanner"
 

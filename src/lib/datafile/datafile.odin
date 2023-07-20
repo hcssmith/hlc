@@ -2,22 +2,8 @@ package datafile
 
 import "core:os"
 import "core:fmt"
-import "core:text/scanner" 
-
+import "core:strings"
 import "hlc:tokeniser"
-import "hlc:complextypes"
-
-
-// NodeTypes
-EntityName :: string
-NodeName :: string
-FileName :: string
-
-Entity :: union {
-  string,
-  int,
-  f64,
-}
 
 KnownToken :: enum {
   OpenObject,
@@ -26,153 +12,175 @@ KnownToken :: enum {
   CloseObject,
 }
 
-// Datafile
-DataFile :: struct {
-  //Data
-  p_EntityMap: map[EntityName]Entity,
-  p_NodeSet:  map[NodeName]^DataFile,
-
-  //Entity Functions
-  SetEntity:proc(^DataFile, EntityName, Entity),
-  GetEntity:proc(^DataFile, EntityName) -> Entity,
-  GetString:proc(^DataFile, EntityName) -> string,
-  GetInt:proc(^DataFile, EntityName) -> int,
-  GetF64:proc(^DataFile, EntityName) -> f64,
-
-  //Group Functions
-  Node: proc(^DataFile, NodeName) -> ^DataFile,
-  AddNode: proc(^DataFile, NodeName, ^DataFile),
-
-  //FileFunctions
-  Write: proc(^DataFile, FileName) -> bool,
-  Read: proc(^DataFile, FileName) -> bool,
-}
 
 ROOTOBJECTID :: "_ROOT_OBJECT_DO_NOT_USE_AS_AN_IDENTTIFIER"
 
+DataFile :: struct {
+  RootNode: int,
+  LatestID: int,
+  NodeCollection: [dynamic]^Node,
+  AddNode: proc(^DataFile, ^Node),
+  GetNodeByID: proc(^DataFile, int) -> ^Node,
+  GetString: proc(^DataFile, string) -> string,
+  SetString: proc(^DataFile, string, string),
+  }
 
-new_datafile :: proc() -> ^DataFile{
-  df := new(DataFile)
-  df.p_NodeSet = make(map[NodeName]^DataFile)
-  df.p_EntityMap = make(map[EntityName]Entity)
-  //Initialize Functions
-  df.GetString = getString
-  df.GetInt = getInt
-  df.GetF64 = getF64
-  df.SetEntity = setEntity
-  df.GetEntity = getEntity
-  df.Node = node
-  df.AddNode = addnode
-  df.Read = read
-  return df
+
+GetNodeByID :: proc(s: ^DataFile, i: int) -> ^Node {
+  for node in s.NodeCollection {
+    if node.ID == i {
+      return node
+    }
+  }
+  return nil
 }
 
-@(private)
-read :: proc(df: ^DataFile, dn: FileName) -> bool {
-  fd, _ := os.open(dn)
+AddNode :: proc(df: ^DataFile, n: ^Node) {
+  if df.LatestID == -1 {
+    df.LatestID = 0
+  } else {
+    df.LatestID +=1
+  }
+  n.ID = df.LatestID
+  append(&df.NodeCollection, n)
+}
+
+Node :: struct {
+  ID: int,
+  Parent: int,
+  Name: string,
+  Value: string,
+  Children: [dynamic]int,
+  AddChild: proc(^Node, ^Node),
+}
+
+AddChild:: proc(s: ^Node, c: ^Node) {
+  c.Parent = s.ID
+  append(&s.Children, c.ID)
+}
+
+new_node :: proc() -> ^Node {
+  n := new(Node)
+  n.Children = make([dynamic]int)
+  n.AddChild = AddChild
+  return n
+}
+  
+
+make_datafile :: proc() -> DataFile {
+  df := new(DataFile)
+  df.RootNode = -1;
+  df.LatestID = -1;
+  df.NodeCollection = make([dynamic]^Node)
+  df.AddNode = AddNode
+  df.GetNodeByID = GetNodeByID
+  return df^
+  }
+
+load :: proc(file: string) -> DataFile {
+  df := make_datafile()
+  fd, _ := os.open(file)
+  defer os.close(fd)
   size, _ := os.file_size(fd)
   data := make([]u8, size)
   os.read(fd, data[:])
-  df.p_EntityMap = make(map[EntityName]Entity)
-  df.p_NodeSet = make(map[NodeName]^DataFile)
 
-  token_map: map[string]KnownToken
+  token_map:map[string]KnownToken
 
-  token_map["<-"]= KnownToken.Assignment
-  token_map["//"]= KnownToken.Comment
-  token_map["{"]= KnownToken.OpenObject
-  token_map["}"]=KnownToken.CloseObject
+  token_map["<-"] = KnownToken.Assignment
+  token_map["//"] = KnownToken.Comment
+  token_map["{"] = KnownToken.OpenObject
+  token_map["}-"] = KnownToken.CloseObject
+
+  root_node := new_node()
+
+  df->AddNode(root_node)
+
+  root_node.Name = ROOTOBJECTID
+  root_node.Value = ROOTOBJECTID
+
+  df.RootNode = root_node.ID
+
 
   tokens := tokeniser.tokeniser(KnownToken, token_map, string(data))
   
-  ptrstk := complextypes.make_ptr_stack(DataFile)
+  cn : ^Node= root_node
 
-  for x:=0;x<len(tokens);x+=1 
-  {
-    #partial switch v in tokens[x] {
+  skipped:=false
+
+  last_ident:tokeniser.Identifier
+
+  for x:=0; x<len(tokens); x+=1 {
+    token := tokens[x]
+    switch v in token {
+      case tokeniser.Identifier:
+        last_ident = token.(tokeniser.Identifier)
+      case tokeniser.WhitespaceToken:
+        continue 
       case KnownToken:
+        switch token.(KnownToken) {
+          case .OpenObject:
+            fmt.printf("OpenObjectToken\n")
+            if cn.Name == ROOTOBJECTID && !skipped { skipped=true; continue } //Skip first object
+            n := new_node()
+            n.Name = last_ident
+            df->AddNode(n)
+            cn->AddChild(n)
+            cn = n
+          case .CloseObject:
+            cn = df->GetNodeByID(cn.Parent)
+            if cn == nil {
+              return df
+            }
+          case .Comment:
+            comm_loop: for {
+              x += 1
+              #partial switch v in tokens[x]{
+                  case tokeniser.WhitespaceToken:
+                    if tokens[x].(tokeniser.WhitespaceToken) == .NewLine {
+                      break comm_loop
+                    }
+                  case:
+                    continue
+              }
+            }
+          case .Assignment:
+            n := new_node()
+            n.Name = last_ident
+            sb := strings.builder_make()
+            assign_loop: for {
+              x+=1
+              switch v in tokens[x] {
+                case tokeniser.Identifier:
+                  strings.write_string(&sb, tokens[x].(tokeniser.Identifier))
+                case tokeniser.WhitespaceToken:
+                  switch tokens[x].(tokeniser.WhitespaceToken) {
+                    case .NewLine:
+                      break assign_loop
+                    case .Tab:
+                      strings.write_string(&sb, "\t")
+                    case .Space:
+                       strings.write_string(&sb, " ")
+                  }
+                case KnownToken:
+                  switch tokens[x].(KnownToken) {
+                    case .Assignment:
+                      strings.write_string(&sb, "<-")
+                    case .Comment:
+                      break assign_loop
+                    case .CloseObject: // { for editor brace balancing
+                       strings.write_string(&sb, "}")
+                    case .OpenObject:
+                       strings.write_string(&sb, "{") //} for editor brace balancing
+                  }
+            }
+            }
+            n.Value = strings.to_string(sb)
+            df->AddNode(n)
+            cn->AddChild(n)
     }
   }
-  return true
-}
-
-@(private)
-write :: proc(df: ^DataFile, dn: FileName) -> bool { 
-  return false
-}
-
-@(private)
-node :: proc(df: ^DataFile, nn: NodeName) -> ^DataFile {
-  if nn in df.p_NodeSet {
-    return df.p_NodeSet[nn]
-  } 
-  createnode(df, nn)
-  
-  return df.p_NodeSet[nn]
-}
-
-@(private)
-addnode :: proc(df: ^DataFile, nn: NodeName, n:^DataFile) {
-  df.p_NodeSet[nn]=n
-}
-
-@(private)
-createnode :: proc(df: ^DataFile, nn: NodeName) {
-  node:= new_datafile()
-  df.p_NodeSet[nn] = node
-}
-
-@(private)
-getString :: proc(df: ^DataFile, en: EntityName) -> string {
-  DEF :string=""
-  entity := df.p_EntityMap[en]
-  switch v in entity {
-    case string:
-      return entity.(string)
-    case int:
-      return DEF
-    case f64:
-      return DEF
+    
   }
-  return DEF
-}
-
-@(private)
-getInt :: proc(df: ^DataFile, en: EntityName) -> int {
-  DEF :int=0 
-  entity := df.p_EntityMap[en]
-  switch v in entity {
-    case string:
-      return DEF
-    case int:
-      return entity.(int) 
-    case f64:
-      return DEF
-  }
-  return DEF
-}
-
-@(private)
-getF64 :: proc(df: ^DataFile, en: EntityName) -> f64 {
-  DEF :f64=0.0
-  entity := df.p_EntityMap[en]
-  switch v in entity {
-    case string:
-      return DEF
-    case int:
-      return DEF 
-    case f64:
-      return entity.(f64)
-  }
-  return DEF
-}
-
-@(private)
-setEntity :: proc(df: ^DataFile, en: EntityName, e: Entity) {
-  df.p_EntityMap[en] = e
-}
-
-@(private)
-getEntity :: proc(df: ^DataFile, en: EntityName) -> Entity {
-  return df.p_EntityMap[en]
+  return df
 }
