@@ -7,10 +7,6 @@ import tk "hlc:tokeniser"
 
 import "core:fmt"
 
-example_enum :: enum {
-  OneEntry,
-}
-
 main :: proc() {
 
   d := df.load("test2.dat")
@@ -20,6 +16,4 @@ main :: proc() {
 
 
   d->Save("test2.dat")
-
-
 }
