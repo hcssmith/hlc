@@ -4,6 +4,7 @@ import "core:os"
 import "core:fmt"
 import "core:strings"
 import "hlc:tokeniser"
+import "hlc:util/ustring"
 
 KnownToken :: enum {
   OpenObject,
@@ -120,21 +121,17 @@ make_datafile :: proc() -> DataFile {
   return df^
   }
 
+FileMethod  ::  os.O_CREATE | os.O_WRONLY | os.O_TRUNC
+Permissions ::  os.S_IRUSR | os.S_IWUSR | os.S_IRGRP | os.S_IWGRP
+
 Save :: proc(df: ^DataFile, filename: string) {
-  fd, _ := os.open(filename, os.O_CREATE | os.O_WRONLY | os.O_TRUNC, os.S_IRUSR | os.S_IWUSR | os.S_IRGRP | os.S_IWGRP)
+  fd, _ := os.open(filename, FileMethod, Permissions)
   defer os.close(fd)
   os.write_string(fd, node_to_string(df, df.RootNode))
   }
 
 node_to_string :: proc(df: ^DataFile, current_node_id: int, indent_count:int=0) -> string {
-  ib := strings.builder_make() 
-  ic := indent_count
-  for {
-    if  ic == 0 {break}
-    strings.write_string(&ib, "\t")
-    ic-=1
-    }
-    indent := strings.to_string(ib)
+  indent := ustring.repeat_string("\t", indent_count)
   
   sb := strings.builder_make()
   cn := df->GetNodeByID(current_node_id)

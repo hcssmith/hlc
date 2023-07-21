@@ -2,6 +2,7 @@ package xml
 
 import "core:strings"
 import "core:fmt"
+import "hlc:util/ustring"
 
 XMLNodeCollection :: struct {
   LatestNodeID: NodeID,
@@ -54,12 +55,7 @@ opening_tag :: proc(nc: ^XMLNodeCollection, node:^XMLNode) -> string {
     if parent_node != nil {
       if parent_node.NamespacesInScope[k] == v { continue }
     }
-    strings.write_string(&tb, " ")
-    strings.write_string(&tb, "xmlns:")
-    strings.write_string(&tb, k)
-    strings.write_string(&tb, "=\"")
-    strings.write_string(&tb, v)
-    strings.write_string(&tb, "\"")
+    fmt.sbprintf(&tb, " xmlns:{0}=\"{1}\"", k, v)
   }
   // attributes
   for attrid in node.Attributes {
@@ -70,18 +66,34 @@ opening_tag :: proc(nc: ^XMLNodeCollection, node:^XMLNode) -> string {
       strings.write_string(&tb, attr.Namespace)
       strings.write_string(&tb, ":")
     }
-    strings.write_string(&tb, attr.Name)
-    strings.write_string(&tb, "=\"")
-    strings.write_string(&tb, attr.Text)
-    strings.write_string(&tb, "\"")
+    fmt.sbprintf(&tb, "{0}=\"{1}\"", attr.Name, attr.Text)
     }
   strings.write_string(&tb, ">")
   return strings.to_string(tb)
 }
 
-pretty_print :: proc(self: ^XMLNodeCollection) {
-  basenode := self->get_node_by_id(self.RootNode)
+node_to_text :: proc(nc: ^XMLNodeCollection, nodeid: int, indent_level: int = 0) -> string {
+  indent := ustring.repeat_string("\t", indent_level)
+  sb:=strings.builder_make()
+  node := nc->get_node_by_id(nodeid)
+  fmt.sbprintf(&sb, "{0}{1}\n", indent, opening_tag(nc, node))
+  if node.Text != "" {
+    fmt.sbprintf(&sb, "{0}{1}",indent, node.Text)
+  } else {
+    for child in node.Children {
+      strings.write_string(&sb, node_to_text(nc, child, indent_level +1))
+    }
+  }
+  fmt.sbprintf(&sb, "{0}<", indent)
+  if node.Namespace != "" {
+    fmt.sbprintf(&sb, "{0}:", node.Namespace)
+  }
+  fmt.sbprintf(&sb, "{0}>\n", node.Name)
+  return strings.to_string(sb)
+}
 
-  fmt.printf("{0}\n", opening_tag(self, basenode))
+pretty_print :: proc(self: ^XMLNodeCollection) {
+
+  fmt.printf("{0}\n", node_to_text(self, self.RootNode))
   }
 
