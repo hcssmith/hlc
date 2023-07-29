@@ -11,6 +11,8 @@ import "core:fmt"
 main :: proc() {
 
   nc := xm.make_node_collection()
-
-  nc->parse_string("<!-- this is a comment --><a href=\"https://google.com\">Google</a>")
+  s:string = "<!-- this is a comment --><a href=\"https://google.com\">Google</a>"
+  
+  fmt.printf("{0}\n", s)
+  nc->parse_string(s)
 }

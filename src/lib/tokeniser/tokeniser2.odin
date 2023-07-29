@@ -89,7 +89,7 @@ tokeniser2 :: proc(token_map: map[string]$T, input_string: string) -> [dynamic]T
         }
         pass:=true
         for x:=0; x<tk.length; x+=1 {
-          if x+1 < tk.length {break}
+          if x+1 >= tk.length {break}
           nch:=scanner.peek(&sc, x)
           if nch != tk.full[x+1] {pass = false; break}
         }
@@ -103,7 +103,6 @@ tokeniser2 :: proc(token_map: map[string]$T, input_string: string) -> [dynamic]T
 
     if tlen != 0 {
       append(&token_list, ttok)
-      fmt.printf("{0}: {1}\n", ch, scanner.position(&sc))
       for x:=1; x < tlen; x+=1 {
         scanner.next(&sc)
       }
