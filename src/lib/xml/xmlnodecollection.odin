@@ -3,6 +3,7 @@ package xml
 import "core:strings"
 import "core:fmt"
 import "hlc:util/ustring"
+import "hlc:tokeniser"
 
 XMLNodeCollection :: struct {
   LatestNodeID: NodeID,
@@ -12,6 +13,7 @@ XMLNodeCollection :: struct {
   add_node: proc(^XMLNodeCollection, ^XMLNode),
   get_node_by_id: proc(^XMLNodeCollection, NodeID) -> ^XMLNode,
   pretty_print: proc(^XMLNodeCollection),
+  parse_string: proc(^XMLNodeCollection, string),
   }
 
 make_node_collection :: proc() -> XMLNodeCollection {
@@ -21,6 +23,7 @@ make_node_collection :: proc() -> XMLNodeCollection {
   nc.add_node = add_node
   nc.pretty_print = pretty_print
   nc.get_node_by_id = get_node_by_id
+  nc.parse_string = parse_string
   return nc
   }
 
@@ -55,7 +58,11 @@ opening_tag :: proc(nc: ^XMLNodeCollection, node:^XMLNode) -> string {
     if parent_node != nil {
       if parent_node.NamespacesInScope[k] == v { continue }
     }
-    fmt.sbprintf(&tb, " xmlns:{0}=\"{1}\"", k, v)
+    if k == DEFAULTNAMESPACE {
+      fmt.sbprintf(&tb, " xmlns=\"{0}\"", v)
+    } else {
+      fmt.sbprintf(&tb, " xmlns:{0}=\"{1}\"", k, v)
+    }
   }
   // attributes
   for attrid in node.Attributes {
@@ -97,3 +104,34 @@ pretty_print :: proc(self: ^XMLNodeCollection) {
   fmt.printf("{0}\n", node_to_text(self, self.RootNode))
   }
 
+KnownToken :: enum {
+  OpenTag,
+  CloseTag,
+  CloseIndicator,
+  Quote,
+  DoubleQuote,
+  Assign,
+  CommentOpen,
+  CommentClose,
+}
+
+parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
+  token_map:map[string]KnownToken
+
+  token_map["<"] = .OpenTag
+  token_map["<!--"] = .CommentOpen
+  token_map["-->"] = .CommentClose
+  token_map[">"] = .CloseTag
+  token_map["/"] = .CloseIndicator
+  token_map["'"] = .Quote
+  token_map["\""] = .DoubleQuote
+  token_map["="] = .Assign
+
+
+  tokens := tokeniser.tokeniser2(token_map, xmlstring)
+
+
+  fmt.printf("{0}", tokens)
+  
+
+}

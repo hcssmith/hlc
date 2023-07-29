@@ -3,6 +3,7 @@ package xml
 import "core:fmt"
 import "core:strings"
 
+DEFAULTNAMESPACE :: "_DEFAULT_NAMESPACE_"
 
 NodeType :: enum {
   Text,
@@ -65,7 +66,14 @@ add_child :: proc(self: ^XMLNode, child:^XMLNode) {
     }
   append(&self.Children, child.ID) 
   child.ParentID = self.ID
+  for k, v in self.NamespacesInScope {
+    if k in child.NamespacesInScope {
+      continue
+    } else {
+      child.NamespacesInScope[k]=v
+    }
   }
+}
 
 add_attr :: proc(self: ^XMLNode, child:^XMLNode) {
   if self.ID == -1 || child.ID == -1 {

@@ -2,6 +2,8 @@ package tokeniser
 
 import "core:text/scanner"
 
+import "core:fmt"
+
 import "hlc:buffers"
 import "hlc:util/runes"
 

@@ -12,3 +12,10 @@ repeat_string :: proc(s: string, count:int) -> string {
   }
   return strings.to_string(ib)
 }
+
+arr_contains :: proc(s: string, arr:[dynamic]string) -> bool {
+  for e in arr {
+    if s == e { return true }
+  }
+  return false
+}
