@@ -136,7 +136,10 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
   tokens := tokeniser.tokeniser(token_map, xmlstring)
   fmt.printf("{0}", tokens)
 
-  for token in tokens:
+  for token in tokens {
+
+
+  }
   
 
 }
