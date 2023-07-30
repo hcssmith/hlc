@@ -128,7 +128,7 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
   token_map["="] = .Assign
 
 
-  tokens := tokeniser.tokeniser2(token_map, xmlstring)
+  tokens := tokeniser.tokeniser(token_map, xmlstring)
 
 
   fmt.printf("{0}", tokens)

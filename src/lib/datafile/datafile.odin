@@ -184,7 +184,7 @@ load :: proc(file: string = "") -> DataFile {
   token_map["}-"] = KnownToken.CloseObject
 
 
-  tokens := tokeniser.tokeniser(KnownToken, token_map, string(data))
+  tokens := tokeniser.tokeniser(token_map, string(data))
   
   cn : ^Node= root_node
 
