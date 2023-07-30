@@ -116,6 +116,11 @@ KnownToken :: enum {
 }
 
 parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
+
+  nc.Nodes = make([dynamic]^XMLNode)
+  nc.LatestNodeID = -1
+  nc.RootNode = -1
+
   token_map:map[string]KnownToken
 
   token_map["<"] = .OpenTag
@@ -129,9 +134,9 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
 
 
   tokens := tokeniser.tokeniser(token_map, xmlstring)
-
-
   fmt.printf("{0}", tokens)
+
+  for token in tokens:
   
 
 }
