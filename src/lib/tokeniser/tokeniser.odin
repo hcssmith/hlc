@@ -10,7 +10,7 @@ token_key :: struct($T: typeid) {
   initial:rune,
   length:int,
   full: []rune,
-  token:T,
+  token:Token(T),
 }
 
 
@@ -46,14 +46,11 @@ tokeniser :: proc(token_map: map[string]$T, input_string: string) -> [dynamic]To
     tk.token = v
     append(&token_key_list, tk)
   }
-
   
+  append(&token_key_list, token_key(T){' ', 1, []rune{' '}, WhitespaceToken.Space})
+  append(&token_key_list, token_key(T){'\t', 1, []rune{'\t'}, WhitespaceToken.Tab})
+  append(&token_key_list, token_key(T){'\n', 1, []rune{'\n'}, WhitespaceToken.NewLine})
 
-
-  wmp:= make(map[rune]WhitespaceToken)
-  wmp[' ']  = WhitespaceToken.Space
-  wmp['\t'] = WhitespaceToken.Tab
-  wmp['\n'] = WhitespaceToken.NewLine
 
   for {
     ch := scanner.next(&sc)
@@ -69,19 +66,8 @@ tokeniser :: proc(token_map: map[string]$T, input_string: string) -> [dynamic]To
       rb->Clear()
       break
     }
-    if runes.isWhitespace(ch) {
-      s := rb->ToString()
-      if s in token_map {
-        append(&token_list, token_map[s])
-      } else {
-        if s != "" {append(&token_list, s)}
-      }
-      rb->Clear()
-      append(&token_list, wmp[ch])
-      continue
-    }
     tlen:int=0
-    ttok:T
+    ttok:Token(T)
     tl: for tk in token_key_list {
       if ch == tk.initial && tk.length > tlen {
         if tlen == 0 {
