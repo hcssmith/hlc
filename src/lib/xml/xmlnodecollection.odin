@@ -113,6 +113,7 @@ KnownToken :: enum {
   Assign,
   CommentOpen,
   CommentClose,
+  NamespaceIndicator,
 }
 
 parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
@@ -120,6 +121,12 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
   nc.Nodes = make([dynamic]^XMLNode)
   nc.LatestNodeID = -1
   nc.RootNode = -1
+
+  root_node := new_node(.Elem, ROOTNODE)
+
+  nc->add_node(root_node)
+  nc.RootNode = root_node.ID
+
 
   token_map:map[string]KnownToken
 
@@ -131,15 +138,93 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
   token_map["'"] = .Quote
   token_map["\""] = .DoubleQuote
   token_map["="] = .Assign
+  token_map[":"] = .NamespaceIndicator
 
 
   tokens := tokeniser.tokeniser(token_map, xmlstring)
   fmt.printf("{0}", tokens)
 
-  for token in tokens {
+
+  cn := root_node
+  parent := 0
+
+  for x:=0; x<len(tokens); x+=1 {
+    token := tokens[x]
+
+    switch v in token {
+      case KnownToken:
+        switch token.(KnownToken) {
+          case .CommentOpen:
+            n := new_node(.Elem, COMMENT)
+            s, i := advance_to_end_comment(KnownToken, &tokens, x, token_map)
+            n->set_text(s)
+            x = i
+            nc->add_node(n)
+            cn->add_child(n)
+            continue
+          case .CommentClose:
+            continue
+          case .OpenTag:
+            n, i:= get_element_start_tag(KnownToken, &tokens, x, token_map)
+            
+        }
+      case tokeniser.Identifier:
+      case tokeniser.WhitespaceToken:
+
+    }
+    
+  }
+}
+
+get_element_start_tag :: proc($T: typeid, tokens: ^[dynamic]tokeniser.Token(T), index: int, token_map:map[string]T) -> (XMLNode, int) {
+  n := new_node(.Elem, "")
+  x:= index
+  
+  word:string
+  for ;x<len(tokens);x+=1 {
+    switch v in tokens[x] {
+      case tokeniser.Identifier:
+        word = tokens[x].(tokeniser.Identifier)
+    }
 
 
   }
-  
 
+}
+
+advance_to_end_comment :: proc($T: typeid,  tokens: ^[dynamic]tokeniser.Token(T), index: int, token_map: map[string]T) -> (string, int) {
+  sb := strings.builder_make()
+  x:=index
+  nesting_level := 0
+  for ; x<len(tokens); x+=1 {
+    switch v in tokens[x] {
+      case KnownToken:
+        if tokens[x].(KnownToken) == .CommentOpen {nesting_level+=1}
+        if tokens[x].(KnownToken) == .CommentClose && nesting_level != 0 { nesting_level -= 1 }
+        if tokens[x].(KnownToken) == .CommentClose && nesting_level == 0 {  
+          return strings.to_string(sb), x
+          }
+        strings.write_string(&sb, token_to_string(tokens[x].(KnownToken), token_map))
+      case tokeniser.WhitespaceToken:
+        switch tokens[x].(tokeniser.WhitespaceToken) {
+          case .NewLine:
+            strings.write_string(&sb, "\n")
+          case .Space:
+            strings.write_string(&sb, " ")
+          case .Tab:
+            strings.write_string(&sb, "\t")
+        }
+      case tokeniser.Identifier:
+        strings.write_string(&sb,tokens[x].(tokeniser.Identifier))
+    }
+  }
+  return strings.to_string(sb), x 
+}
+
+token_to_string :: proc(token: $T, token_map:map[string]T) -> string {
+  for k,v in token_map {
+    if v == token { return k }
+  }
+  sb := strings.builder_make()
+  return fmt.tprint("{0}", token)
 }

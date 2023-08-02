@@ -3,7 +3,9 @@ package xml
 import "core:fmt"
 import "core:strings"
 
-DEFAULTNAMESPACE :: "_DEFAULT_NAMESPACE_"
+DEFAULTNAMESPACE  :: "_DEFAULT_NAMESPACE_"
+COMMENT           :: "_COMMENT_"
+ROOTNODE          :: "_ROOT_NODE_"
 
 NodeType :: enum {
   Text,

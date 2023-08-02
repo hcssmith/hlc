@@ -68,7 +68,7 @@ tokeniser :: proc(token_map: map[string]$T, input_string: string) -> [dynamic]To
     }
     tlen:int=0
     ttok:Token(T)
-    tl: for tk in token_key_list {
+    for tk in token_key_list {
       if ch == tk.initial && tk.length > tlen {
         if tlen == 0 {
           s := rb->ToString()
