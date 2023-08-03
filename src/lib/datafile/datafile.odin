@@ -196,11 +196,11 @@ load :: proc(file: string = "") -> DataFile {
     token := tokens[x]
     switch v in token {
       case tokeniser.Identifier:
-        last_ident = token.(tokeniser.Identifier)
+        last_ident = v
       case tokeniser.WhitespaceToken:
         continue 
       case KnownToken:
-        switch token.(KnownToken) {
+        switch v {
           case .OpenObject:
             if cn.Name == ROOTOBJECTID && !skipped { skipped=true; continue } //Skip first object
             n := new_node()
@@ -218,7 +218,7 @@ load :: proc(file: string = "") -> DataFile {
               x += 1
               #partial switch v in tokens[x]{
                   case tokeniser.WhitespaceToken:
-                    if tokens[x].(tokeniser.WhitespaceToken) == .NewLine {
+                    if v == .NewLine {
                       break comm_loop
                     }
                   case:
@@ -233,9 +233,9 @@ load :: proc(file: string = "") -> DataFile {
               x+=1
               switch v in tokens[x] {
                 case tokeniser.Identifier:
-                  strings.write_string(&sb, tokens[x].(tokeniser.Identifier))
+                  strings.write_string(&sb, v)
                 case tokeniser.WhitespaceToken:
-                  switch tokens[x].(tokeniser.WhitespaceToken) {
+                  switch v {
                     case .NewLine:
                       break assign_loop
                     case .Tab:
@@ -244,7 +244,7 @@ load :: proc(file: string = "") -> DataFile {
                        strings.write_string(&sb, " ")
                   }
                 case KnownToken:
-                  switch tokens[x].(KnownToken) {
+                  switch v {
                     case .Assignment:
                       strings.write_string(&sb, "<-")
                     case .Comment:

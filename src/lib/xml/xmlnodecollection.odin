@@ -153,7 +153,7 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
 
     switch v in token {
       case KnownToken:
-        switch token.(KnownToken) {
+        switch v {
           case .CommentOpen:
             n := new_node(.Elem, COMMENT)
             s, i := advance_to_end_comment(KnownToken, &tokens, x, token_map)
@@ -166,6 +166,12 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
             continue
           case .OpenTag:
             n, i:= get_element_start_tag(KnownToken, &tokens, x, token_map)
+          case .NamespaceIndicator:
+          case .Assign:
+          case .DoubleQuote:
+          case .Quote:
+          case .CloseIndicator:
+          case .CloseTag:
             
         }
       case tokeniser.Identifier:
@@ -182,14 +188,14 @@ get_element_start_tag :: proc($T: typeid, tokens: ^[dynamic]tokeniser.Token(T), 
   
   word:string
   for ;x<len(tokens);x+=1 {
-    switch v in tokens[x] {
+    #partial switch v in tokens[x] {
       case tokeniser.Identifier:
-        word = tokens[x].(tokeniser.Identifier)
+        word = v
     }
 
 
   }
-
+  return n^, 0
 }
 
 advance_to_end_comment :: proc($T: typeid,  tokens: ^[dynamic]tokeniser.Token(T), index: int, token_map: map[string]T) -> (string, int) {
@@ -199,14 +205,14 @@ advance_to_end_comment :: proc($T: typeid,  tokens: ^[dynamic]tokeniser.Token(T)
   for ; x<len(tokens); x+=1 {
     switch v in tokens[x] {
       case KnownToken:
-        if tokens[x].(KnownToken) == .CommentOpen {nesting_level+=1}
-        if tokens[x].(KnownToken) == .CommentClose && nesting_level != 0 { nesting_level -= 1 }
-        if tokens[x].(KnownToken) == .CommentClose && nesting_level == 0 {  
+        if v == .CommentOpen {nesting_level+=1}
+        if v == .CommentClose && nesting_level != 0 { nesting_level -= 1 }
+        if v == .CommentClose && nesting_level == 0 {  
           return strings.to_string(sb), x
           }
-        strings.write_string(&sb, token_to_string(tokens[x].(KnownToken), token_map))
+        strings.write_string(&sb, token_to_string(v, token_map))
       case tokeniser.WhitespaceToken:
-        switch tokens[x].(tokeniser.WhitespaceToken) {
+        switch v {
           case .NewLine:
             strings.write_string(&sb, "\n")
           case .Space:
@@ -215,7 +221,7 @@ advance_to_end_comment :: proc($T: typeid,  tokens: ^[dynamic]tokeniser.Token(T)
             strings.write_string(&sb, "\t")
         }
       case tokeniser.Identifier:
-        strings.write_string(&sb,tokens[x].(tokeniser.Identifier))
+        strings.write_string(&sb, v)
     }
   }
   return strings.to_string(sb), x 
