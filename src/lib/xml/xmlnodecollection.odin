@@ -142,8 +142,6 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
 
 
   tokens := tokeniser.tokeniser(token_map, xmlstring)
-  fmt.printf("{0}", tokens)
-
 
   cn := root_node
   parent := 0
@@ -182,20 +180,34 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
   }
 }
 
-get_element_start_tag :: proc($T: typeid, tokens: ^[dynamic]tokeniser.Token(T), index: int, token_map:map[string]T) -> (XMLNode, int) {
+MISSINGENAME :: "_MISSING_ELEM_NAME_"
+
+get_element_start_tag :: proc($T: typeid, tokens: ^[dynamic]tokeniser.Token(T), index: int, token_map:map[string]T) -> (^XMLNode, int) {
   n := new_node(.Elem, "")
   x:= index
   
-  word:string
+  namespace:string
+  elemname:string
   for ;x<len(tokens);x+=1 {
     #partial switch v in tokens[x] {
       case tokeniser.Identifier:
-        word = v
+        elemname = v
+      case KnownToken:
+        if v == .Assign {
+            namespace = elemname
+            elemname = MISSINGENAME
+        } else if v == .CloseTag {
+          return n, x
+        }
+      case tokeniser.WhitespaceToken:
+        n.Namespace = namespace
+        n.Name = elemname
+
     }
 
 
   }
-  return n^, 0
+  return n, 0
 }
 
 advance_to_end_comment :: proc($T: typeid,  tokens: ^[dynamic]tokeniser.Token(T), index: int, token_map: map[string]T) -> (string, int) {
