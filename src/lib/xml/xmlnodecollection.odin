@@ -154,16 +154,21 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
         switch v {
           case .CommentOpen:
             n := new_node(.Elem, COMMENT)
-            s, i := advance_to_end_comment(KnownToken, &tokens, x, token_map)
+            s, i := advance_to_end_comment(&tokens, x, token_map)
             n->set_text(s)
             x = i
             nc->add_node(n)
             cn->add_child(n)
             continue
           case .CommentClose:
-            continue
           case .OpenTag:
-            n, i:= get_element_start_tag(KnownToken, &tokens, x, token_map)
+            n, i, attrs := get_element_start_tag(&tokens, x, token_map)
+            nc->add_node(n)
+            cn->add_child(n)
+            for attr in attrs {
+              nc->add_node(attr)
+              n->add_attr(attr)
+            }
           case .NamespaceIndicator:
           case .Assign:
           case .DoubleQuote:
@@ -180,37 +185,27 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
   }
 }
 
-MISSINGENAME :: "_MISSING_ELEM_NAME_"
+get_element_start_tag :: proc(tokens: ^[dynamic]tokeniser.Token(KnownToken), index: int, token_map:map[string]KnownToken) -> (^XMLNode, int, [dynamic]^XMLNode) {
+  attrs := make([dynamic]^XMLNode)
 
-get_element_start_tag :: proc($T: typeid, tokens: ^[dynamic]tokeniser.Token(T), index: int, token_map:map[string]T) -> (^XMLNode, int) {
-  n := new_node(.Elem, "")
-  x:= index
-  
-  namespace:string
-  elemname:string
-  for ;x<len(tokens);x+=1 {
-    #partial switch v in tokens[x] {
-      case tokeniser.Identifier:
-        elemname = v
-      case KnownToken:
-        if v == .Assign {
-            namespace = elemname
-            elemname = MISSINGENAME
-        } else if v == .CloseTag {
-          return n, x
-        }
-      case tokeniser.WhitespaceToken:
-        n.Namespace = namespace
-        n.Name = elemname
+  n:=new_node(.Elem, "", "")
 
-    }
-
-
+  if tok, ok := tokens[index+1].(tokeniser.Identifier); ok {
+    n.Name = tok
   }
-  return n, 0
+  if tok, ok:= tokens[index+2].(KnownToken); ok {
+    if tok == .NamespaceIndicator && index + 3 < len(tokens) {
+      if e, ok2 := tokens[index+3].(tokeniser.Identifier); ok2 {
+        n.Namespace = n.Name
+        n.Name = e
+      }
+    }
+  }
+
 }
 
-advance_to_end_comment :: proc($T: typeid,  tokens: ^[dynamic]tokeniser.Token(T), index: int, token_map: map[string]T) -> (string, int) {
+
+advance_to_end_comment :: proc(tokens: ^[dynamic]tokeniser.Token(KnownToken), index: int, token_map: map[string]KnownToken) -> (string, int) {
   sb := strings.builder_make()
   x:=index
   nesting_level := 0
