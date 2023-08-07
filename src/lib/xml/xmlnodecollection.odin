@@ -43,6 +43,7 @@ get_node_by_id :: proc(self: ^XMLNodeCollection, id:NodeID) -> ^XMLNode {
 }
 
 opening_tag :: proc(nc: ^XMLNodeCollection, node:^XMLNode) -> string {
+  if node.Name == COMMENT { return "<!--" }
   parent_node := nc->get_node_by_id(node.ParentID)
   tb := strings.builder_make()
   strings.write_string(&tb, "<")
@@ -85,13 +86,18 @@ node_to_text :: proc(nc: ^XMLNodeCollection, nodeid: int, indent_level: int = 0)
   node := nc->get_node_by_id(nodeid)
   fmt.sbprintf(&sb, "{0}{1}\n", indent, opening_tag(nc, node))
   if node.Text != "" {
-    fmt.sbprintf(&sb, "{0}{1}",indent, node.Text)
+    fmt.sbprintf(&sb, "{0}{1}\n",indent, node.Text)
   } else {
     for child in node.Children {
       strings.write_string(&sb, node_to_text(nc, child, indent_level +1))
     }
   }
-  fmt.sbprintf(&sb, "{0}<", indent)
+  if node.Name == COMMENT {
+    fmt.sbprintf(&sb, "{0}-->\n", indent)
+    return strings.to_string(sb)
+  } else {
+    fmt.sbprintf(&sb, "{0}<", indent)
+  }
   if node.Namespace != "" {
     fmt.sbprintf(&sb, "{0}:", node.Namespace)
   }
@@ -143,6 +149,8 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
 
   tokens := tokeniser.tokeniser(token_map, xmlstring)
 
+  fmt.printf("{0}\n\n", tokens)
+
   cn := root_node
   parent := 0
 
@@ -162,6 +170,9 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
             continue
           case .CommentClose:
           case .OpenTag:
+            if tok, ok := tokens[x+1].(KnownToken); ok {
+              if tok == .CloseIndicator { break }
+            }
             n, i, attrs := get_element_start_tag(&tokens, x, token_map)
             nc->add_node(n)
             cn->add_child(n)
@@ -169,6 +180,7 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
               nc->add_node(attr)
               n->add_attr(attr)
             }
+            x = i
           case .NamespaceIndicator:
           case .Assign:
           case .DoubleQuote:
@@ -181,8 +193,9 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
       case tokeniser.WhitespaceToken:
 
     }
-    
+
   }
+  nc->pretty_print()
 }
 
 get_element_start_tag :: proc(tokens: ^[dynamic]tokeniser.Token(KnownToken), index: int, token_map:map[string]KnownToken) -> (^XMLNode, int, [dynamic]^XMLNode) {
@@ -193,6 +206,7 @@ get_element_start_tag :: proc(tokens: ^[dynamic]tokeniser.Token(KnownToken), ind
   if tok, ok := tokens[index+1].(tokeniser.Identifier); ok {
     n.Name = tok
   }
+
   if tok, ok:= tokens[index+2].(KnownToken); ok {
     if tok == .NamespaceIndicator && index + 3 < len(tokens) {
       if e, ok2 := tokens[index+3].(tokeniser.Identifier); ok2 {
@@ -201,13 +215,24 @@ get_element_start_tag :: proc(tokens: ^[dynamic]tokeniser.Token(KnownToken), ind
       }
     }
   }
+  x := index+2 if n.Namespace == "" else index+4
 
+  token_loop: for ;x<len(tokens);x+=1 {
+    switch v in tokens[x] {
+      case tokeniser.Identifier:
+      case tokeniser.WhitespaceToken:
+      case KnownToken:
+        if v == .CloseTag {break token_loop}
+    }
+
+  }
+  return n, x, nil
 }
 
 
 advance_to_end_comment :: proc(tokens: ^[dynamic]tokeniser.Token(KnownToken), index: int, token_map: map[string]KnownToken) -> (string, int) {
   sb := strings.builder_make()
-  x:=index
+  x:=index+1
   nesting_level := 0
   for ; x<len(tokens); x+=1 {
     switch v in tokens[x] {
