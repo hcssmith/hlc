@@ -84,16 +84,17 @@ node_to_text :: proc(nc: ^XMLNodeCollection, nodeid: int, indent_level: int = 0)
   indent := ustring.repeat_string("\t", indent_level)
   sb:=strings.builder_make()
   node := nc->get_node_by_id(nodeid)
-  fmt.sbprintf(&sb, "{0}{1}\n", indent, opening_tag(nc, node))
+  fmt.sbprintf(&sb, "{0}{1}", indent, opening_tag(nc, node))
   if node.Text != "" {
-    fmt.sbprintf(&sb, "{0}{1}\n",indent, node.Text)
+    fmt.sbprintf(&sb, "{0}",node.Text)
   } else {
+    strings.write_string(&sb, "\n")
     for child in node.Children {
       strings.write_string(&sb, node_to_text(nc, child, indent_level +1))
     }
   }
   if node.Name == COMMENT {
-    fmt.sbprintf(&sb, "{0}-->\n", indent)
+    strings.write_string(&sb, "-->\n")
     return strings.to_string(sb)
   } else {
     fmt.sbprintf(&sb, "{0}<", indent)
