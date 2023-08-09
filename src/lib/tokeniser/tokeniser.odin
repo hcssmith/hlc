@@ -2,6 +2,7 @@ package tokeniser
 
 import "core:text/scanner"
 import "core:unicode/utf8"
+import "core:strings"
 
 import "hlc:buffers"
 import "hlc:util/runes"
@@ -61,7 +62,15 @@ tokeniser :: proc(token_map: map[string]$T, input_string: string) -> [dynamic]To
       if s in token_map {
         append(&token_list, token_map[s])
       } else {
-        append(&token_list, s)
+          l := len(token_list)
+          if tok, ok := token_list[l-1].(Identifier); ok {
+            sb := strings.builder_make()
+            strings.write_string(&sb, tok)
+            strings.write_string(&sb, s)
+            token_list[l-1] = strings.to_string(sb)
+          } else {
+            append(&token_list, s)
+          }
       }
       rb->Clear()
       break
@@ -75,7 +84,17 @@ tokeniser :: proc(token_map: map[string]$T, input_string: string) -> [dynamic]To
           if s in token_map {
             append(&token_list, token_map[s])
           } else {
-            if s != "" {append(&token_list, s)}
+            if s != "" {
+              l := len(token_list)
+              if tok, ok := token_list[l-1].(Identifier); ok {
+                sb := strings.builder_make()
+                strings.write_string(&sb, tok)
+                strings.write_string(&sb, s)
+                token_list[l-1] = strings.to_string(sb)
+              } else {
+                append(&token_list, s)
+              }
+            }
           }
           rb->Clear()
         }
