@@ -85,6 +85,10 @@ node_to_text :: proc(nc: ^XMLNodeCollection, nodeid: int, indent_level: int = 0)
   sb:=strings.builder_make()
   node := nc->get_node_by_id(nodeid)
   fmt.sbprintf(&sb, "{0}{1}", indent, opening_tag(nc, node))
+  if node.SelfClosing {
+    strings.write_string(&sb, " />\n")
+    return strings.to_string(sb)
+  }
   if node.Text != "" {
     fmt.sbprintf(&sb, "{0}",node.Text)
   } else {
@@ -155,6 +159,8 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
   cn := root_node
   parent := 0
 
+  
+
   for x:=0; x<len(tokens); x+=1 {
     token := tokens[x]
 
@@ -173,6 +179,7 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
           case .OpenTag:
             if tok, ok := tokens[x+1].(KnownToken); ok {
               if tok == .CloseIndicator { break }
+              // handle closing
             }
             n, i, attrs := get_element_start_tag(&tokens, x, token_map)
             nc->add_node(n)
@@ -217,17 +224,55 @@ get_element_start_tag :: proc(tokens: ^[dynamic]tokeniser.Token(KnownToken), ind
     }
   }
   x := index+2 if n.Namespace == "" else index+4
-
+  attr_arr:=make([dynamic]^XMLNode)
   token_loop: for ;x<len(tokens);x+=1 {
     switch v in tokens[x] {
       case tokeniser.Identifier:
+        attr:=new_node(.Attr, "")
+        attr.Name = v
+        if t, o := tokens[x+1].(KnownToken); o && t == .NamespaceIndicator {
+          if en, o2 := tokens[x+2].(tokeniser.Identifier); o2 {
+            attr.Namespace = attr.Name
+            attr.Name = en
+            x += 3
+          }
+        }
+        for y:=x; x<len(tokens);y+=1 {
+          if tok, ok := tokens[y].(KnownToken); ok { if tok == .DoubleQuote { x = y+1; break }}
+        }
+        val := strings.builder_make()
+        val_loop: for y:=x;x<len(tokens);y+=1 {
+          switch v in tokens[y] {
+            case tokeniser.Identifier:
+              strings.write_string(&val, v)
+            case tokeniser.WhitespaceToken:
+              switch v {
+                case .NewLine:
+                  strings.write_string(&val, "\n")
+                case .Space:
+                  strings.write_string(&val, " ")
+                case .Tab:
+                  strings.write_string(&val, "\t")
+              }
+            case KnownToken:
+              if v == .DoubleQuote {
+                attr.Text = strings.to_string(val)
+                x = y
+                break val_loop
+              }
+              strings.write_string(&val, token_to_string(v, token_map))
+          }
+        }
+        append(&attr_arr, attr)
       case tokeniser.WhitespaceToken:
+        continue
       case KnownToken:
         if v == .CloseTag {break token_loop}
+        if v == .CloseIndicator { n.SelfClosing = true }
     }
 
   }
-  return n, x, nil
+  return n, x, attr_arr
 }
 
 

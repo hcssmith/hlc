@@ -26,6 +26,7 @@ XMLNode :: struct {
   Text: string,
   Name: string,
   Namespace: string,
+  SelfClosing:bool,
   // interface
   to_string: proc(^XMLNode) -> string,
   set_text: proc(^XMLNode, string),
@@ -43,11 +44,18 @@ new_node :: proc(type: NodeType, name: string, namespace: string = "") -> ^XMLNo
   node.ID = -1
   node.ParentID = -1
   node.Type = type
-  if type == .Attr || type == .Elem {
-    node.Name = name
-    node.Namespace = namespace
-  } else { 
-    node.Text = name
+  switch type {
+    case .Attr:
+      node.Name = name
+      node.Namespace = namespace
+      node.SelfClosing = true
+    case .Elem:
+      node.Name = name
+      node.Namespace = namespace
+      node.SelfClosing = false
+    case .Text:
+      node.Text = name
+      node.SelfClosing = true
   }
   node.to_string = to_string
   node.add_child = add_child
