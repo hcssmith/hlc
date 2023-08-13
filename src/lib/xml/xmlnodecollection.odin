@@ -11,6 +11,8 @@ XMLNodeCollection :: struct {
   LatestNodeID: NodeID,
   Nodes: [dynamic]^XMLNode,
   RootNode: NodeID,
+  XMLDeclaration: XMLDeclaration,
+  ProcessingInstructions: [dynamic]ProcessingInstruction,
   //interface
   add_node: proc(^XMLNodeCollection, ^XMLNode),
   get_node_by_id: proc(^XMLNodeCollection, NodeID) -> ^XMLNode,
@@ -18,6 +20,16 @@ XMLNodeCollection :: struct {
   parse_string: proc(^XMLNodeCollection, string),
   prune_nodelist: proc(^XMLNodeCollection),
   }
+
+XMLDeclaration :: struct {
+  Version:string,
+  Encoding:string,
+}
+
+ProcessingInstruction :: struct {
+  Name:string,
+  Keys: map[string]string,
+}
 
 make_node_collection :: proc() -> XMLNodeCollection {
   nc:XMLNodeCollection
@@ -122,9 +134,8 @@ node_to_text :: proc(nc: ^XMLNodeCollection, nodeid: int, indent_level: int = 0)
 
 pretty_print :: proc(self: ^XMLNodeCollection) {
 
-  for x in self.Nodes {
-    fmt.printf("{0}\n", x->to_string())
-  }
+  fmt.printf("{0}\n", self.XMLDeclaration)
+
 
   fmt.printf("\n\n\n{0}\n", node_to_text(self, self.RootNode))
   }
@@ -139,6 +150,8 @@ KnownToken :: enum {
   CommentOpen,
   CommentClose,
   NamespaceIndicator,
+  ProcessingInstructionBegin,
+  ProcessingInstructionEnd,
 }
 
 parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
@@ -156,6 +169,8 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
   token_map:map[string]KnownToken
 
   token_map["<"] = .OpenTag
+  token_map["<?"] = .ProcessingInstructionBegin
+  token_map["?>"] = .ProcessingInstructionEnd
   token_map["<!--"] = .CommentOpen
   token_map["-->"] = .CommentClose
   token_map[">"] = .CloseTag
@@ -167,6 +182,10 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
 
 
   tokens := tokeniser.tokeniser(token_map, xmlstring)
+
+  for x, i in tokens {
+    fmt.printf("{0}:{1}\n", i,x )
+  }
 
 
   cn := root_node
@@ -180,6 +199,19 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
     switch v in token {
       case KnownToken:
         switch v {
+          case .ProcessingInstructionBegin:
+            name:string
+            for w:=0;w<len(tokens);w+=1 {
+              if tok, ok := tokens[w].(KnownToken); ok && tok == .ProcessingInstructionEnd {
+                x = w
+                break
+              } else {
+                if tok, ok := tokens[w].(tokeniser.Identifier); ok && name == "" { name = tok }
+              }
+            }
+            fmt.printf("{0}\n", name)
+
+          case .ProcessingInstructionEnd:
           case .CommentOpen:
             n := new_node(.Elem, COMMENT)
             s, i := advance_to_end_comment(&tokens, x, token_map)
@@ -215,8 +247,7 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
                   parent = cn.ParentID
                   continue
                 }
-              }
-            }
+              }             }
             n, i, attrs := get_element_start_tag(&tokens, x, token_map)
             nc->add_node(n)
             cn->add_child(n)

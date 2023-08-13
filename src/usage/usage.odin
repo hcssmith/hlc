@@ -11,11 +11,8 @@ import "core:fmt"
 main :: proc() {
 
   nc := xm.make_node_collection()
-  s:string = "<document xmlns=\"https://hcssmith.com/xsd/document\" title=\"Page Title\"><text>This is some text.</text></document>"
-  s2:string = "<ns:self-close-test type=\"a\" />"
+  s2:string = "<?xml version=\"1.0\"?><ns:self-close-test type=\"a\" />"
   
-  fmt.printf("{0}\n", s)
-  nc->parse_string(s)
   
 
   fmt.printf("{0}\n", s2)
