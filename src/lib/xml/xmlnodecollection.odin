@@ -5,6 +5,8 @@ import "core:fmt"
 import "hlc:util/ustring"
 import "hlc:tokeniser"
 
+PRUNE_NODE :: -2
+
 XMLNodeCollection :: struct {
   LatestNodeID: NodeID,
   Nodes: [dynamic]^XMLNode,
@@ -14,6 +16,7 @@ XMLNodeCollection :: struct {
   get_node_by_id: proc(^XMLNodeCollection, NodeID) -> ^XMLNode,
   pretty_print: proc(^XMLNodeCollection),
   parse_string: proc(^XMLNodeCollection, string),
+  prune_nodelist: proc(^XMLNodeCollection),
   }
 
 make_node_collection :: proc() -> XMLNodeCollection {
@@ -24,6 +27,7 @@ make_node_collection :: proc() -> XMLNodeCollection {
   nc.pretty_print = pretty_print
   nc.get_node_by_id = get_node_by_id
   nc.parse_string = parse_string
+  nc.prune_nodelist = prune_nodelist
   return nc
   }
 
@@ -76,7 +80,7 @@ opening_tag :: proc(nc: ^XMLNodeCollection, node:^XMLNode) -> string {
     }
     fmt.sbprintf(&tb, "{0}=\"{1}\"", attr.Name, attr.Text)
     }
-  strings.write_string(&tb, ">")
+  if !node.SelfClosing { strings.write_string(&tb, ">") }
   return strings.to_string(tb)
 }
 
@@ -84,6 +88,10 @@ node_to_text :: proc(nc: ^XMLNodeCollection, nodeid: int, indent_level: int = 0)
   indent := ustring.repeat_string("\t", indent_level)
   sb:=strings.builder_make()
   node := nc->get_node_by_id(nodeid)
+  if node.Type == .Text {
+    strings.write_string(&sb, node.Text)
+    return strings.to_string(sb)
+  }
   fmt.sbprintf(&sb, "{0}{1}", indent, opening_tag(nc, node))
   if node.SelfClosing {
     strings.write_string(&sb, " />\n")
@@ -100,8 +108,10 @@ node_to_text :: proc(nc: ^XMLNodeCollection, nodeid: int, indent_level: int = 0)
   if node.Name == COMMENT {
     strings.write_string(&sb, "-->\n")
     return strings.to_string(sb)
+  } else if node.Text != "" {
+    fmt.sbprintf(&sb, "</")
   } else {
-    fmt.sbprintf(&sb, "{0}<", indent)
+    fmt.sbprintf(&sb, "{0}</", indent)
   }
   if node.Namespace != "" {
     fmt.sbprintf(&sb, "{0}:", node.Namespace)
@@ -112,7 +122,11 @@ node_to_text :: proc(nc: ^XMLNodeCollection, nodeid: int, indent_level: int = 0)
 
 pretty_print :: proc(self: ^XMLNodeCollection) {
 
-  fmt.printf("{0}\n", node_to_text(self, self.RootNode))
+  for x in self.Nodes {
+    fmt.printf("{0}\n", x->to_string())
+  }
+
+  fmt.printf("\n\n\n{0}\n", node_to_text(self, self.RootNode))
   }
 
 KnownToken :: enum {
@@ -154,12 +168,11 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
 
   tokens := tokeniser.tokeniser(token_map, xmlstring)
 
-  fmt.printf("{0}\n\n", tokens)
 
   cn := root_node
   parent := 0
 
-  
+  tb := strings.builder_make() 
 
   for x:=0; x<len(tokens); x+=1 {
     token := tokens[x]
@@ -177,9 +190,32 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
             continue
           case .CommentClose:
           case .OpenTag:
+            if strings.builder_len(tb) > 0 {
+              te := new_node(.Text, strings.to_string(tb))
+              nc->add_node(te)
+              cn->add_child(te)
+              tb = strings.builder_make()
+            }
             if tok, ok := tokens[x+1].(KnownToken); ok {
-              if tok == .CloseIndicator { break }
-              // handle closing
+              if tok == .CloseIndicator {
+                n, i, _ := get_element_start_tag(&tokens, x+1, token_map) //27
+                x = i
+                if cn.Name == n.Name && cn.Namespace == n.Namespace {
+                  if len(cn.Children) == 1 {
+                    tn := nc->get_node_by_id(cn.Children[0])
+                    if tn.Type == .Text {
+                      for ni in cn.Children {
+                        chn := nc->get_node_by_id(ni)
+                        chn.ParentID = PRUNE_NODE
+                      }
+                      cn->set_text(tn.Text)
+                    }
+                  }
+                  cn = nc->get_node_by_id(parent)
+                  parent = cn.ParentID
+                  continue
+                }
+              }
             }
             n, i, attrs := get_element_start_tag(&tokens, x, token_map)
             nc->add_node(n)
@@ -187,6 +223,10 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
             for attr in attrs {
               nc->add_node(attr)
               n->add_attr(attr)
+            }
+            if !n.SelfClosing {
+              cn = n
+              parent = n.ParentID
             }
             x = i
           case .NamespaceIndicator:
@@ -198,18 +238,47 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
             
         }
       case tokeniser.Identifier:
+        strings.write_string(&tb, v)
       case tokeniser.WhitespaceToken:
-
+        switch v {
+          case .Tab:
+            strings.write_string(&tb, "\t")
+          case .NewLine:
+            strings.write_string(&tb, "\n")
+          case .Space:
+            strings.write_string(&tb, " ")
+        }
     }
 
   }
+  if len(root_node.Children) == 1
+  {
+    n := nc->get_node_by_id(root_node.Children[0])
+    n.ParentID = 0
+    nc.RootNode = n.ID
+    root_node.Children = make([dynamic]NodeID)
+    root_node.ParentID = PRUNE_NODE
+  }
+
+  nc->prune_nodelist()
   nc->pretty_print()
+}
+
+prune_nodelist :: proc(nc: ^XMLNodeCollection) {
+  nl := make([dynamic]^XMLNode)
+  for node in nc.Nodes {
+    if node.ParentID != -2 {
+      append(&nl, node)
+    }
+  }
+  nc.Nodes = nl
 }
 
 get_element_start_tag :: proc(tokens: ^[dynamic]tokeniser.Token(KnownToken), index: int, token_map:map[string]KnownToken) -> (^XMLNode, int, [dynamic]^XMLNode) {
   attrs := make([dynamic]^XMLNode)
 
   n:=new_node(.Elem, "", "")
+  
 
   if tok, ok := tokens[index+1].(tokeniser.Identifier); ok {
     n.Name = tok
@@ -262,6 +331,13 @@ get_element_start_tag :: proc(tokens: ^[dynamic]tokeniser.Token(KnownToken), ind
               }
               strings.write_string(&val, token_to_string(v, token_map))
           }
+        }
+        if attr.Namespace == "xmlns" {
+          n.NamespacesInScope[attr.Name] = attr.Text
+          continue
+        } else if attr.Namespace == "" && attr.Name == "xmlns" {
+          n.NamespacesInScope[DEFAULTNAMESPACE] = attr.Text
+          continue
         }
         append(&attr_arr, attr)
       case tokeniser.WhitespaceToken:
