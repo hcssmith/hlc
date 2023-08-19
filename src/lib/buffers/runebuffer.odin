@@ -2,7 +2,6 @@ package buffers
 
 import "core:unicode/utf8"
 
-@(private)
 RuneBuffer :: struct {
   _buf: [dynamic]rune,
   Add: proc(^RuneBuffer, rune),

@@ -2,17 +2,19 @@ package xml
 
 import "core:strings"
 import "core:fmt"
+import "core:log"
 import "hlc:util/ustring"
 import "hlc:tokeniser"
 
 PRUNE_NODE :: -2
+
 
 XMLNodeCollection :: struct {
   LatestNodeID: NodeID,
   Nodes: [dynamic]^XMLNode,
   RootNode: NodeID,
   XMLDeclaration: XMLDeclaration,
-  ProcessingInstructions: [dynamic]ProcessingInstruction,
+  ProcessingInstructions: [dynamic]^ProcessingInstruction,
   //interface
   add_node: proc(^XMLNodeCollection, ^XMLNode),
   get_node_by_id: proc(^XMLNodeCollection, NodeID) -> ^XMLNode,
@@ -35,6 +37,7 @@ make_node_collection :: proc() -> XMLNodeCollection {
   nc:XMLNodeCollection
   nc.LatestNodeID = -1
   nc.Nodes = make([dynamic]^XMLNode)
+  nc.ProcessingInstructions = make([dynamic]^ProcessingInstruction)
   nc.add_node = add_node
   nc.pretty_print = pretty_print
   nc.get_node_by_id = get_node_by_id
@@ -44,6 +47,7 @@ make_node_collection :: proc() -> XMLNodeCollection {
   }
 
 add_node :: proc(nc: ^XMLNodeCollection, node: ^XMLNode) {
+  when ODIN_DEBUG { log.debugf("Adding {0} Node: {1}", node.Type, node.Name) }
   nc.LatestNodeID += 1
   node.ID = nc.LatestNodeID
   append(&nc.Nodes, node)
@@ -134,11 +138,11 @@ node_to_text :: proc(nc: ^XMLNodeCollection, nodeid: int, indent_level: int = 0)
 
 pretty_print :: proc(self: ^XMLNodeCollection) {
 
-  fmt.printf("{0}\n", self.XMLDeclaration)
+  when ODIN_DEBUG { log.debug(self.XMLDeclaration) }
 
+  fmt.printf("{0}\n", node_to_text(self, self.RootNode))
 
-  fmt.printf("\n\n\n{0}\n", node_to_text(self, self.RootNode))
-  }
+}
 
 KnownToken :: enum {
   OpenTag,
@@ -165,36 +169,39 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
   nc->add_node(root_node)
   nc.RootNode = root_node.ID
 
-
   token_map:map[string]KnownToken
 
-  token_map["<"] = .OpenTag
-  token_map["<?"] = .ProcessingInstructionBegin
-  token_map["?>"] = .ProcessingInstructionEnd
+  token_map["<"]    = .OpenTag
+  token_map["<?"]   = .ProcessingInstructionBegin
+  token_map["?>"]   = .ProcessingInstructionEnd
   token_map["<!--"] = .CommentOpen
-  token_map["-->"] = .CommentClose
-  token_map[">"] = .CloseTag
-  token_map["/"] = .CloseIndicator
-  token_map["'"] = .Quote
-  token_map["\""] = .DoubleQuote
-  token_map["="] = .Assign
-  token_map[":"] = .NamespaceIndicator
+  token_map["-->"]  = .CommentClose
+  token_map[">"]    = .CloseTag
+  token_map["/"]    = .CloseIndicator
+  token_map["'"]    = .Quote
+  token_map["\""]   = .DoubleQuote
+  token_map["="]    = .Assign
+  token_map[":"]    = .NamespaceIndicator
 
 
   tokens := tokeniser.tokeniser(token_map, xmlstring)
 
-  for x, i in tokens {
-    fmt.printf("{0}:{1}\n", i,x )
+
+  when ODIN_DEBUG {
+    for x, i in tokens {
+      log.debugf("{0}:{1}", i,x )
+    }
   }
 
-
   cn := root_node
-  parent := 0
+  parent := root_node.ParentID
 
   tb := strings.builder_make() 
 
   for x:=0; x<len(tokens); x+=1 {
     token := tokens[x]
+
+    when ODIN_DEBUG { log.debugf("Processing token {0}", token) }
 
     switch v in token {
       case KnownToken:
@@ -206,11 +213,20 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
                 x = w
                 break
               } else {
-                if tok, ok := tokens[w].(tokeniser.Identifier); ok && name == "" { name = tok }
+                if tok, ok := tokens[w].(tokeniser.Identifier); ok && name == "" { 
+                  when ODIN_DEBUG { log.debugf("Name: {0}", tok) }
+                  name = tok
+                  x=w
+                  break
+                }
               }
             }
-            fmt.printf("{0}\n", name)
+            pi := new(ProcessingInstruction)
+            for w:=0;w<len(tokens);w+=1 {
+              // same as attr loop
+              // add each to the ProcessingInstruction
 
+            }
           case .ProcessingInstructionEnd:
           case .CommentOpen:
             n := new_node(.Elem, COMMENT)
@@ -298,7 +314,10 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
 prune_nodelist :: proc(nc: ^XMLNodeCollection) {
   nl := make([dynamic]^XMLNode)
   for node in nc.Nodes {
-    if node.ParentID != -2 {
+    if node.ParentID == PRUNE_NODE {
+      log.warnf("Removing: {0}", node.Name)
+    }
+    if node.ParentID != PRUNE_NODE {
       append(&nl, node)
     }
   }
