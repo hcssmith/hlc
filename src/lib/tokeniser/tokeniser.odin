@@ -29,6 +29,8 @@ WhitespaceToken :: enum {
   NewLine,
 }
 
+
+
 tokeniser :: proc(token_map: map[string]$T, input_string: string) -> [dynamic]Token(T) {
   token_list := make([dynamic]Token(T))
   rb := buffers.make_runebuffer()

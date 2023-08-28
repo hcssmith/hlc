@@ -1,5 +1,12 @@
 all: run_dbg
 
+
+
+.PHONY: test
+
+test:
+	odin test ./src/test -collection:hlc=src/lib
+
 release:
 	odin build ./src/usage -collection:hlc=src/lib -out:hlc_usage
 

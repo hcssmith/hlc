@@ -7,10 +7,13 @@ import "hlc:util/ustring"
 import "hlc:tokeniser"
 
 PRUNE_NODE :: -2
+XML_VERSION :: "__XML_VERSION__"
+XML_ENCODING :: "__XML_ENCODING__"
 
 
 XMLNodeCollection :: struct {
   LatestNodeID: NodeID,
+  LatestPIID: int,
   Nodes: [dynamic]^XMLNode,
   RootNode: NodeID,
   XMLDeclaration: XMLDeclaration,
@@ -21,6 +24,8 @@ XMLNodeCollection :: struct {
   pretty_print: proc(^XMLNodeCollection),
   parse_string: proc(^XMLNodeCollection, string),
   prune_nodelist: proc(^XMLNodeCollection),
+  add_processing_instruction: proc(^XMLNodeCollection, ^ProcessingInstruction),
+  prune_processing_instrcutions: proc(^XMLNodeCollection),
   }
 
 XMLDeclaration :: struct {
@@ -29,6 +34,7 @@ XMLDeclaration :: struct {
 }
 
 ProcessingInstruction :: struct {
+  Id:int,
   Name:string,
   Keys: map[string]string,
 }
@@ -36,6 +42,7 @@ ProcessingInstruction :: struct {
 make_node_collection :: proc() -> XMLNodeCollection {
   nc:XMLNodeCollection
   nc.LatestNodeID = -1
+  nc.LatestPIID = -1
   nc.Nodes = make([dynamic]^XMLNode)
   nc.ProcessingInstructions = make([dynamic]^ProcessingInstruction)
   nc.add_node = add_node
@@ -43,8 +50,17 @@ make_node_collection :: proc() -> XMLNodeCollection {
   nc.get_node_by_id = get_node_by_id
   nc.parse_string = parse_string
   nc.prune_nodelist = prune_nodelist
+  nc.prune_processing_instrcutions = prune_processing_instrcutions
+  nc.add_processing_instruction = add_processing_instruction
   return nc
   }
+
+add_processing_instruction :: proc(nc:^XMLNodeCollection, pi: ^ProcessingInstruction) {
+  pi := pi
+  nc.LatestPIID +=1
+  pi.Id = nc.LatestPIID 
+  append(&nc.ProcessingInstructions, pi) 
+}
 
 add_node :: proc(nc: ^XMLNodeCollection, node: ^XMLNode) {
   when ODIN_DEBUG { log.debugf("Adding {0} Node: {1}", node.Type, node.Name) }
@@ -140,6 +156,16 @@ pretty_print :: proc(self: ^XMLNodeCollection) {
 
   when ODIN_DEBUG { log.debug(self.XMLDeclaration) }
 
+  if self.XMLDeclaration.Version != "" || self.XMLDeclaration.Encoding != "" {
+    fmt.printf("<?xml version=\"{0}\" encoding=\"{1}\"?>\n", self.XMLDeclaration.Version, self.XMLDeclaration.Encoding)
+  }
+  for pi in self.ProcessingInstructions {
+    fmt.printf("<?{0}", pi.Name)
+    for k,v in pi.Keys {
+      fmt.printf(" {0}=\"{1}\"",k,v)
+    }
+    fmt.printf("?>\n")
+  }
   fmt.printf("{0}\n", node_to_text(self, self.RootNode))
 
 }
@@ -148,6 +174,7 @@ KnownToken :: enum {
   OpenTag,
   CloseTag,
   CloseIndicator,
+  Escape,
   Quote,
   DoubleQuote,
   Assign,
@@ -156,10 +183,12 @@ KnownToken :: enum {
   NamespaceIndicator,
   ProcessingInstructionBegin,
   ProcessingInstructionEnd,
+  CDataBegin,
+  CDataEnd,
 }
 
-parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
 
+parse_string :: proc(nc: ^XMLNodeCollection, xmlstring:string) {
   nc.Nodes = make([dynamic]^XMLNode)
   nc.LatestNodeID = -1
   nc.RootNode = -1
@@ -171,103 +200,86 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
 
   token_map:map[string]KnownToken
 
-  token_map["<"]    = .OpenTag
-  token_map["<?"]   = .ProcessingInstructionBegin
-  token_map["?>"]   = .ProcessingInstructionEnd
-  token_map["<!--"] = .CommentOpen
-  token_map["-->"]  = .CommentClose
-  token_map[">"]    = .CloseTag
-  token_map["/"]    = .CloseIndicator
-  token_map["'"]    = .Quote
-  token_map["\""]   = .DoubleQuote
-  token_map["="]    = .Assign
-  token_map[":"]    = .NamespaceIndicator
+  token_map["<"]          = .OpenTag
+  token_map["<?"]         = .ProcessingInstructionBegin
+  token_map["?>"]         = .ProcessingInstructionEnd
+  token_map["<!--"]       = .CommentOpen
+  token_map["-->"]        = .CommentClose
+  token_map[">"]          = .CloseTag
+  token_map["/"]          = .CloseIndicator
+  token_map["\\"]         = .Escape
+  token_map["'"]          = .Quote
+  token_map["\""]         = .DoubleQuote
+  token_map["="]          = .Assign
+  token_map[":"]          = .NamespaceIndicator
+  token_map["<![CDATA["]  = .CDataBegin
+  token_map["]]>"]        = .CDataEnd
 
 
   tokens := tokeniser.tokeniser(token_map, xmlstring)
 
-
-  when ODIN_DEBUG {
-    for x, i in tokens {
-      log.debugf("{0}:{1}", i,x )
-    }
-  }
+  tc := make_token_collection(tokens, token_map)
 
   cn := root_node
   parent := root_node.ParentID
 
-  tb := strings.builder_make() 
-
-  for x:=0; x<len(tokens); x+=1 {
-    token := tokens[x]
-
-    when ODIN_DEBUG { log.debugf("Processing token {0}", token) }
-
+  sb := strings.builder_make()
+  
+  for token in tc->Next() {
+    log.debugf("PARSE LEVEL{0}", token)
     switch v in token {
       case KnownToken:
         switch v {
           case .ProcessingInstructionBegin:
-            name:string
-            for w:=0;w<len(tokens);w+=1 {
-              if tok, ok := tokens[w].(KnownToken); ok && tok == .ProcessingInstructionEnd {
-                x = w
-                break
+            n, attrs :=process_open_tag(tc)
+            pi := new(ProcessingInstruction)
+            pi.Name = n.Name
+            for attr in attrs {
+              if pi.Name == "xml" && strings.to_upper(attr.Name) == "VERSION" {
+                pi.Keys[XML_VERSION] = attr.Text
+              } else if pi.Name == "xml" && strings.to_upper(attr.Name) == "ENCODING" {
+                pi.Keys[XML_ENCODING] = attr.Text
               } else {
-                if tok, ok := tokens[w].(tokeniser.Identifier); ok && name == "" { 
-                  when ODIN_DEBUG { log.debugf("Name: {0}", tok) }
-                  name = tok
-                  x=w
-                  break
-                }
+                pi.Keys[attr.Name] = attr.Text
               }
             }
-            pi := new(ProcessingInstruction)
-            for w:=0;w<len(tokens);w+=1 {
-              // same as attr loop
-              // add each to the ProcessingInstruction
+            nc->add_processing_instruction(pi)
 
-            }
-          case .ProcessingInstructionEnd:
           case .CommentOpen:
+            cs := process_comment(tc)
             n := new_node(.Elem, COMMENT)
-            s, i := advance_to_end_comment(&tokens, x, token_map)
-            n->set_text(s)
-            x = i
+            n->set_text(cs)
             nc->add_node(n)
             cn->add_child(n)
-            continue
-          case .CommentClose:
           case .OpenTag:
-            if strings.builder_len(tb) > 0 {
-              te := new_node(.Text, strings.to_string(tb))
+            if strings.builder_len(sb) > 0 {
+              te := new_node(.Text, strings.to_string(sb))
               nc->add_node(te)
               cn->add_child(te)
-              tb = strings.builder_make()
+              sb = strings.builder_make()
             }
-            if tok, ok := tokens[x+1].(KnownToken); ok {
-              if tok == .CloseIndicator {
-                n, i, _ := get_element_start_tag(&tokens, x+1, token_map) //27
-                x = i
-                if cn.Name == n.Name && cn.Namespace == n.Namespace {
-                  if len(cn.Children) == 1 {
-                    tn := nc->get_node_by_id(cn.Children[0])
-                    if tn.Type == .Text {
-                      for ni in cn.Children {
-                        chn := nc->get_node_by_id(ni)
-                        chn.ParentID = PRUNE_NODE
-                      }
-                      cn->set_text(tn.Text)
-                    }
+            if cmp(tc->Peek(tc.Ptr+1).?, .CloseIndicator) {
+              tc.Ptr += 1
+              n, _ := process_open_tag(tc)
+              if n.Name == cn.Name && n.Namespace == cn.Namespace {
+                if len(cn.Children) == 1 {
+                  tn := nc->get_node_by_id(cn.Children[0])
+                  if tn.Type == .Text {
+                    cn->set_text(tn.Text)
+                    tn.ParentID = PRUNE_NODE
+                    cn.Children = make([dynamic]NodeID)
                   }
-                  cn = nc->get_node_by_id(parent)
-                  parent = cn.ParentID
-                  continue
                 }
-              }             }
-            n, i, attrs := get_element_start_tag(&tokens, x, token_map)
+                cn = nc->get_node_by_id(parent)
+                parent = cn.ParentID
+                continue
+              }
+            }
+            n, attrs := process_open_tag(tc)
             nc->add_node(n)
             cn->add_child(n)
             for attr in attrs {
+              fmt.printf("{0}", attr->to_string())
               nc->add_node(attr)
               n->add_attr(attr)
             }
@@ -275,29 +287,13 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
               cn = n
               parent = n.ParentID
             }
-            x = i
-          case .NamespaceIndicator:
-          case .Assign:
-          case .DoubleQuote:
-          case .Quote:
-          case .CloseIndicator:
-          case .CloseTag:
-            
+          case .CloseTag, .CloseIndicator, .CommentClose, .Quote, .ProcessingInstructionEnd, .DoubleQuote, .Assign, .NamespaceIndicator, .Escape, .CDataEnd, .CDataBegin:
         }
-      case tokeniser.Identifier:
-        strings.write_string(&tb, v)
-      case tokeniser.WhitespaceToken:
-        switch v {
-          case .Tab:
-            strings.write_string(&tb, "\t")
-          case .NewLine:
-            strings.write_string(&tb, "\n")
-          case .Space:
-            strings.write_string(&tb, " ")
-        }
+      case tokeniser.Identifier, tokeniser.WhitespaceToken:
+        strings.write_string(&sb, tc->TokenToString(token))
     }
-
   }
+  
   if len(root_node.Children) == 1
   {
     n := nc->get_node_by_id(root_node.Children[0])
@@ -307,129 +303,139 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring: string) {
     root_node.ParentID = PRUNE_NODE
   }
 
+  for pi in nc.ProcessingInstructions {
+    if pi.Name == "xml" {
+      nc.XMLDeclaration.Version = pi.Keys[XML_VERSION]
+      nc.XMLDeclaration.Encoding = pi.Keys[XML_ENCODING]
+      pi.Id = PRUNE_NODE
+    }
+  }
+
   nc->prune_nodelist()
+  nc->prune_processing_instrcutions()
+
   nc->pretty_print()
 }
+
+process_open_tag :: proc(tc: ^TokenCollection(KnownToken)) -> (^XMLNode, [dynamic]^XMLNode) {
+  attrs := make([dynamic]^XMLNode)
+  n:=new_node(.Elem, "", "")
+
+  s:=tc->Peek(tc.Ptr + 1)
+  s2:=tc->Peek(tc.Ptr + 2).?
+
+  if cmp(s2, .NamespaceIndicator) {
+    s3 := tc->Peek(tc.Ptr + 3)
+    n.Name = tc->TokenToString(s3.?)
+    n.Namespace = tc->TokenToString(s.?)
+    tc.Ptr += 3
+  } else {
+    n.Name = tc->TokenToString(s.?)
+    tc.Ptr += 1
+  }
+
+  for token in tc->Next() {
+    log.debugf("PROCESSING TOPLEVEL: {0}", token)
+    if cmp(token, .CloseTag) || cmp(token, .ProcessingInstructionEnd) {
+      log.debug("CLOSING")
+      break
+    }
+    if tok, ok := token.(tokeniser.Identifier); ok {
+      attr := new_node(.Attr, "")
+      if cmp(tc->Peek(tc.Ptr +1).?, .NamespaceIndicator) {
+        if tok_en, ok := tc->Peek(tc.Ptr +2).?.(tokeniser.Identifier); ok {
+          attr.Namespace = tok
+          attr.Name = tok_en
+          tc.Ptr +=2
+        }
+      } else {
+        attr.Name = tok
+      }
+      attr_loop: for token in tc->Next() {
+        log.debugf("PROCESSING ATTR LEVE: {0}", token)
+        if cmp(token, .Assign) {
+          start_location := tc.Ptr
+          tc->AdvanceTo(.Quote)
+          ql := tc.Ptr
+          tc.Ptr = start_location
+          tc->AdvanceTo(.DoubleQuote)
+          dql := tc.Ptr
+          tc.Ptr = ql > dql ? dql : ql 
+          nt := ql > dql ? KnownToken.DoubleQuote : KnownToken.Quote
+          sb := strings.builder_make()
+          for token in tc->Next() {
+            log.debugf("PROCESSING VAL LEVE: {0}", token)
+            if cmp(token, nt) && !cmp(tc->Peek(tc.Ptr-1).?, .Escape){
+              attr.Text = strings.to_string(sb)
+              break attr_loop
+            }
+            strings.write_string(&sb, tc->TokenToString(token))
+          }
+        } else if is_ident(token) {
+          tc.Ptr -=1
+          break
+        } else if cmp(token, .CloseIndicator) {
+          n.SelfClosing = true
+        }
+
+      }
+      if attr.Namespace == "xmlns" {
+        n.NamespacesInScope[attr.Name] = attr.Text
+      } else if attr.Name == "xmlns" {
+        n.NamespacesInScope[DEFAULTNAMESPACE] = attr.Text
+      } else {
+        append(&attrs, attr)
+      }
+    }
+    if cmp(token, .CloseIndicator) {
+      n.SelfClosing = true
+    }
+  }
+  return n, attrs
+  
+}
+
+process_comment :: proc(tc: ^TokenCollection(KnownToken)) -> string {
+  nesting_level:int
+  sb := strings.builder_make()
+  for token in tc->Next() {
+    if tok, ok := token.(KnownToken); ok && tok == .CommentClose { 
+      if nesting_level == 0 { break }
+      nesting_level-=1
+    }
+    if tok, ok := token.(KnownToken); ok && tok == .CommentOpen { 
+      nesting_level+=1
+    }
+    strings.write_string(&sb, tc->TokenToString(token))
+  }
+  return strings.to_string(sb)
+}
+
 
 prune_nodelist :: proc(nc: ^XMLNodeCollection) {
   nl := make([dynamic]^XMLNode)
   for node in nc.Nodes {
     if node.ParentID == PRUNE_NODE {
       log.warnf("Removing: {0}", node.Name)
-    }
-    if node.ParentID != PRUNE_NODE {
+    } else {
       append(&nl, node)
     }
   }
   nc.Nodes = nl
 }
 
-get_element_start_tag :: proc(tokens: ^[dynamic]tokeniser.Token(KnownToken), index: int, token_map:map[string]KnownToken) -> (^XMLNode, int, [dynamic]^XMLNode) {
-  attrs := make([dynamic]^XMLNode)
-
-  n:=new_node(.Elem, "", "")
-  
-
-  if tok, ok := tokens[index+1].(tokeniser.Identifier); ok {
-    n.Name = tok
-  }
-
-  if tok, ok:= tokens[index+2].(KnownToken); ok {
-    if tok == .NamespaceIndicator && index + 3 < len(tokens) {
-      if e, ok2 := tokens[index+3].(tokeniser.Identifier); ok2 {
-        n.Namespace = n.Name
-        n.Name = e
-      }
+prune_processing_instrcutions :: proc(nc: ^XMLNodeCollection) {
+  nl := make([dynamic]^ProcessingInstruction)
+  for pi in nc.ProcessingInstructions {
+    if pi.Id == PRUNE_NODE {
+      log.warnf("Removing PI: {0}", pi.Name)
+    } else {
+      append(&nl, pi)
     }
   }
-  x := index+2 if n.Namespace == "" else index+4
-  attr_arr:=make([dynamic]^XMLNode)
-  token_loop: for ;x<len(tokens);x+=1 {
-    switch v in tokens[x] {
-      case tokeniser.Identifier:
-        attr:=new_node(.Attr, "")
-        attr.Name = v
-        if t, o := tokens[x+1].(KnownToken); o && t == .NamespaceIndicator {
-          if en, o2 := tokens[x+2].(tokeniser.Identifier); o2 {
-            attr.Namespace = attr.Name
-            attr.Name = en
-            x += 3
-          }
-        }
-        for y:=x; x<len(tokens);y+=1 {
-          if tok, ok := tokens[y].(KnownToken); ok { if tok == .DoubleQuote { x = y+1; break }}
-        }
-        val := strings.builder_make()
-        val_loop: for y:=x;x<len(tokens);y+=1 {
-          switch v in tokens[y] {
-            case tokeniser.Identifier:
-              strings.write_string(&val, v)
-            case tokeniser.WhitespaceToken:
-              switch v {
-                case .NewLine:
-                  strings.write_string(&val, "\n")
-                case .Space:
-                  strings.write_string(&val, " ")
-                case .Tab:
-                  strings.write_string(&val, "\t")
-              }
-            case KnownToken:
-              if v == .DoubleQuote {
-                attr.Text = strings.to_string(val)
-                x = y
-                break val_loop
-              }
-              strings.write_string(&val, token_to_string(v, token_map))
-          }
-        }
-        if attr.Namespace == "xmlns" {
-          n.NamespacesInScope[attr.Name] = attr.Text
-          continue
-        } else if attr.Namespace == "" && attr.Name == "xmlns" {
-          n.NamespacesInScope[DEFAULTNAMESPACE] = attr.Text
-          continue
-        }
-        append(&attr_arr, attr)
-      case tokeniser.WhitespaceToken:
-        continue
-      case KnownToken:
-        if v == .CloseTag {break token_loop}
-        if v == .CloseIndicator { n.SelfClosing = true }
-    }
-
-  }
-  return n, x, attr_arr
+  nc.ProcessingInstructions = nl
 }
 
-
-advance_to_end_comment :: proc(tokens: ^[dynamic]tokeniser.Token(KnownToken), index: int, token_map: map[string]KnownToken) -> (string, int) {
-  sb := strings.builder_make()
-  x:=index+1
-  nesting_level := 0
-  for ; x<len(tokens); x+=1 {
-    switch v in tokens[x] {
-      case KnownToken:
-        if v == .CommentOpen {nesting_level+=1}
-        if v == .CommentClose && nesting_level != 0 { nesting_level -= 1 }
-        if v == .CommentClose && nesting_level == 0 {  
-          return strings.to_string(sb), x
-          }
-        strings.write_string(&sb, token_to_string(v, token_map))
-      case tokeniser.WhitespaceToken:
-        switch v {
-          case .NewLine:
-            strings.write_string(&sb, "\n")
-          case .Space:
-            strings.write_string(&sb, " ")
-          case .Tab:
-            strings.write_string(&sb, "\t")
-        }
-      case tokeniser.Identifier:
-        strings.write_string(&sb, v)
-    }
-  }
-  return strings.to_string(sb), x 
-}
 
 token_to_string :: proc(token: $T, token_map:map[string]T) -> string {
   for k,v in token_map {
