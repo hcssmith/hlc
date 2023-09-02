@@ -12,7 +12,8 @@ release:
 	odin build $(example) $(hlc) -out:hlc_usage
 
 test-runner:
-	odin run $(test-runner) $(hlc) $(tests) 
+	odin run $(test-runner) $(hlc) $(tests)
+	odin run ./tmp_test.odin -file $(hlc) $(tests)
 
 debug:
 	odin build $(example) -debug $(hlc) -out:hlc_usage_dbg
@@ -28,3 +29,5 @@ clean:
 	rm -f test-runner
 	rm -f hlc_usage
 	rm -f hlc_usage_dbg
+	rm -f tmp_test
+	rm -f tmp_test.odin

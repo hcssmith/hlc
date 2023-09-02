@@ -1,6 +1,6 @@
 {
   "collections": [
     { "name": "hlc", "path": "./src/lib" },
-    { "name": "tests", "path": "./src/test/" }
+    { "name": "tests", "path": "./src/tests/" }
   ]
 }

@@ -28,6 +28,12 @@ TestLocation :: struct {
   file:string,
 }
 
+RunnerOptions :: struct {
+  JsonOnly:bool,
+}
+
+DEFAULT_OPTIONS :RunnerOptions: { true, }
+
 print_test_info :: proc(test: Test, success:bool) {
   fmt.printf("{{\"function\":\"{0}\",\"location\":\"{1}\",\"success\":\"{2}\"}}\n",test.name, test.loc.line, success)
 }
@@ -55,7 +61,7 @@ new_t :: proc() -> ^T {
   return t
 }
 
-runner :: proc(t:^T) {
+runner :: proc(t:^T, opts:RunnerOptions=DEFAULT_OPTIONS) {
   for test in t.Tests {
     t.TStatus = false
     t.TCount +=1
@@ -64,15 +70,27 @@ runner :: proc(t:^T) {
     print_test_info(test, t.TStatus)
   }
 
-  fmt.printf("{0}/{1} Tests succesful\n", t.TSuccess, t.TCount)
+  if !opts.JsonOnly {
+    fmt.printf("{0}/{1} Tests succesful\n", t.TSuccess, t.TCount)
+  }
+}
+
+has_test_attr :: proc(n: ^ast.Value_Decl) -> bool {
+  for attr in n.attributes {
+    for e in attr.elems {
+      if id, ok := e.derived_expr.(^ast.Ident); ok {
+        if id.name == "test" { return true }
+      }
+    }
+  }
+  return false
 }
 
 extract_test_location :: proc(test_collection: string, proc_name: string) -> TestLocation{
   tl := make([dynamic]Test)
 
-  p := parser.default_parser()
 
-  pkg, ok := parser.parse_package_from_path(test_collection, &p)
+  pkg, ok := parser.parse_package_from_path(test_collection)
 
   if !ok {
     fmt.printf("ERROR: could not parse package location")
@@ -83,8 +101,7 @@ extract_test_location :: proc(test_collection: string, proc_name: string) -> Tes
     for decl in pkg.files[file].decls {
       if v, ok := decl.derived_stmt.(^ast.Value_Decl); ok {
         pname, is_ident := v.names[0].derived_expr.(^ast.Ident)
-        _,  is_proc  := v.values[0].derived_expr.(^ast.Proc_Lit)
-
+        p,  is_proc  := v.values[0].derived_expr.(^ast.Proc_Lit)
         if is_ident && is_proc {
           if pname.name == proc_name {
            return TestLocation{
@@ -98,3 +115,5 @@ extract_test_location :: proc(test_collection: string, proc_name: string) -> Tes
   }
   return {}
 }
+
+
