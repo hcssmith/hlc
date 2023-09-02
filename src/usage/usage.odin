@@ -17,7 +17,7 @@ main :: proc() {
   context.logger = log.create_console_logger()
 
   nc := xm.make_node_collection()
-  s:string = "<?xml version=\"1\" encoding=\"UTF-8\"?><?xsl-stylesheet href=\"http://hcssmith/com/xsl/article\"?><article xmlns=\"https://hcssmith.com/ns/article\"><title>Some Article</title><blurb>This is some text.</blurb></article>"
+  s:string = "<?xml version=\"1\" encoding=\"UTF-8\"?><?xsl-stylesheet href=\"http://hcssmith/com/xsl/article\"?><article xmlns=\"https://hcssmith.com/ns/article\"><title>Some Article</title><blurb><![CDATA[This is <i>some</i> text.]]></blurb></article>"
   
   fmt.printf("{0}\n", s)
   nc->parse_string(s)

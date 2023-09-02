@@ -125,7 +125,7 @@ node_to_text :: proc(nc: ^XMLNodeCollection, nodeid: int, indent_level: int = 0)
     return strings.to_string(sb)
   }
   fmt.sbprintf(&sb, "{0}{1}", indent, opening_tag(nc, node))
-  if node.SelfClosing {
+  if node.SelfClosing && node.Type != .Cdata {
     strings.write_string(&sb, " />\n")
     return strings.to_string(sb)
   }
@@ -140,10 +140,13 @@ node_to_text :: proc(nc: ^XMLNodeCollection, nodeid: int, indent_level: int = 0)
   if node.Name == COMMENT {
     strings.write_string(&sb, "-->\n")
     return strings.to_string(sb)
-  } else if node.Text != "" {
+  } else if node.Text != "" && node.Type != .Cdata {
     fmt.sbprintf(&sb, "</")
-  } else {
+  } else if node.Type != .Cdata {
     fmt.sbprintf(&sb, "{0}</", indent)
+  } else {
+    fmt.sbprintf(&sb, "]]>\n")
+    return strings.to_string(sb)
   }
   if node.Namespace != "" {
     fmt.sbprintf(&sb, "{0}:", node.Namespace)
@@ -230,6 +233,19 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring:string) {
     switch v in token {
       case KnownToken:
         switch v {
+          case .CDataBegin:
+            cd := strings.builder_make()
+            n := new_node(.Cdata, "")
+            for token in tc->Next() {
+              if cmp(token, .CDataEnd) {
+                n->set_text(strings.to_string(cd))
+                break
+              } else {
+                strings.write_string(&cd, tc->TokenToString(token))
+              }
+            }
+            nc->add_node(n)
+            cn->add_child(n)
           case .ProcessingInstructionBegin:
             n, attrs :=process_open_tag(tc)
             pi := new(ProcessingInstruction)
@@ -287,7 +303,7 @@ parse_string :: proc(nc: ^XMLNodeCollection, xmlstring:string) {
               cn = n
               parent = n.ParentID
             }
-          case .CloseTag, .CloseIndicator, .CommentClose, .Quote, .ProcessingInstructionEnd, .DoubleQuote, .Assign, .NamespaceIndicator, .Escape, .CDataEnd, .CDataBegin:
+          case .CloseTag, .CloseIndicator, .CommentClose, .Quote, .ProcessingInstructionEnd, .DoubleQuote, .Assign, .NamespaceIndicator, .Escape, .CDataEnd:
         }
       case tokeniser.Identifier, tokeniser.WhitespaceToken:
         strings.write_string(&sb, tc->TokenToString(token))

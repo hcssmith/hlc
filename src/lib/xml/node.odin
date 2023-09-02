@@ -6,11 +6,13 @@ import "core:strings"
 DEFAULTNAMESPACE  :: "_DEFAULT_NAMESPACE_"
 COMMENT           :: "_COMMENT_"
 ROOTNODE          :: "_ROOT_NODE_"
+CDATA             :: "![CDATA["
 
 NodeType :: enum {
   Text,
   Attr,
   Elem,
+  Cdata,
   }
 
 NodeID :: int
@@ -56,6 +58,10 @@ new_node :: proc(type: NodeType, name: string, namespace: string = "") -> ^XMLNo
     case .Text:
       node.Text = name
       node.SelfClosing = true
+    case .Cdata:
+      node.Text = name
+      node.SelfClosing = true
+      node.Name = CDATA 
   }
   node.to_string = to_string
   node.add_child = add_child
