@@ -93,6 +93,8 @@ build_file :: proc(tc: TestCollection) -> File {
             f: Function
             f.Pkg = imp.Id
             f.Name = pname.name
+            f.Line = decl.pos.line
+            f.File = decl.pos.file
             append(&fl.TestFunctions, f) 
           }
         }
@@ -107,14 +109,14 @@ build_file :: proc(tc: TestCollection) -> File {
 DEFAULT_OPTIONS :RunnerOptions: { true, }
 
 print_test_info :: proc(test: Test, success:bool) {
-  fmt.printf("{{\"function\":\"{0}\",\"location\":\"{1}\",\"success\":\"{2}\"}}\n",test.name, test.loc.line, success)
+  fmt.printf("{{\"function\":\"{0}\",\"location\":\"{1}\",\"file\":\"{2}\",\"success\":\"{3}\"}}\n",test.name, test.loc.line, test.loc.file, success)
 }
 
-register_test :: proc(t: ^T, fn: TestFunc, name:string, pkg_location:string) {
+register_test :: proc(t: ^T, fn: TestFunc, name:string, line:int, file:string) {
   tst := new(Test)
   tst.fn = fn
   tst.name = name 
-  tst.loc = extract_test_location(pkg_location, name)
+  tst.loc =TestLocation{line, file} 
   append(&t.Tests, tst^)
 }
 

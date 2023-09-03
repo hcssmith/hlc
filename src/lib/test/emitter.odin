@@ -15,6 +15,8 @@ Function :: struct {
   Name:string,
   Pkg:Pkgid,
   Args:[dynamic]Arg,
+  Line:int,
+  File:string,
 }
 
 Arg :: struct {
@@ -39,20 +41,33 @@ print_file :: proc(f: File, out:string) {
   }
 
   strings.write_string(&sb, "main :: proc() {\n")
+  strings.write_string(&sb, "t:=test.new_t()\n")
 
   for function in f.TestFunctions {
     pkgname:string
     for pkg in f.Imports {
-      if pkg.Id == function.Pkg { pkgname = pkg.Alias if pkg.Alias != "" else pkg.Library }
+      if pkg.Id == function.Pkg { 
+        pkgname = pkg.Alias if pkg.Alias != "" else pkg.Library 
+      }
     }
     fn: Function
     fn.Name = "register_test"
     fn.Pkg = TESTLIBID 
+    targ := Arg{"", "t"}
+    narg := Arg{"", fmt.tprintf("\"{0}\"", function.Name)}
+    larg := Arg{"", fmt.tprintf("{0}", function.Line)}
+    farg := Arg{"", fmt.tprintf("\"{0}\"", function.File)}
     arg := Arg{"", fmt.tprintf("{0}.{1}", pkgname, function.Name)}
+    append(&fn.Args, targ)
     append(&fn.Args, arg)
+    append(&fn.Args, narg)
+    append(&fn.Args, larg)
+    append(&fn.Args, farg)
     call_function(&sb, f, fn)
   }
 
+
+  strings.write_string(&sb, "test.runner(t)\n")
   strings.write_string(&sb, "}\n")
 
 
@@ -65,16 +80,13 @@ print_file :: proc(f: File, out:string) {
 }
 
 call_function :: proc(sb: ^strings.Builder, file:File, fn: Function) {
-  fmt.printf("{0}", file)
   pkg: string
   for i in file.Imports {
-    fmt.printf("{0}:{1}\n", fn.Pkg, i.Id)
     if fn.Pkg == i.Id {
       pkg = i.Alias if i.Alias != "" else i.Library
       break
     }
   }
-  fmt.printf("pkg: {0}", pkg)
   fmt.sbprintf(sb, "{0}.{1}(", pkg, fn.Name)
   for x:=0;x<len(fn.Args);x+=1 {
     if x == len(fn.Args) - 1 {
