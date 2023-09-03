@@ -1,6 +1,7 @@
 package test
 
 import "core:fmt"
+import "core:strings"
 import "core:os"
 import "core:runtime"
 import "core:reflect"
@@ -30,6 +31,77 @@ TestLocation :: struct {
 
 RunnerOptions :: struct {
   JsonOnly:bool,
+}
+
+TestCollection :: struct {
+  locid:int,
+  Locations : [dynamic]Location,
+}
+
+Location :: struct {
+  Path: string,
+  ImportStmnt: Import,
+}
+
+
+TESTLIBID :: 9999
+make_test_collection :: proc() -> TestCollection{
+  t:TestCollection
+  l:Location
+  l.Path = ""
+  l.ImportStmnt.Library = "test"
+  l.ImportStmnt.Alias = ""
+  l.ImportStmnt.Id = 9999
+  l.ImportStmnt.Collection = "hlc"
+  append(&t.Locations, l)
+  return t
+
+}
+
+register_location :: proc(tc: ^TestCollection, loc: string, imp:string) {
+  l:Location
+  l.Path = loc
+  p := strings.split(imp, ":")
+  l.ImportStmnt.Id = tc.locid
+  tc.locid +=1
+  l.ImportStmnt.Alias = ""
+  l.ImportStmnt.Library = p[1]
+  l.ImportStmnt.Collection = p[0]
+  append(&tc.Locations, l)
+}
+
+build_file :: proc(tc: TestCollection) -> File {
+  fl := File{}
+  for location in tc.Locations {
+    imp := location.ImportStmnt
+
+    pkg, ok := parser.parse_package_from_path(location.Path)
+
+    if !ok {
+      fmt.printf("ERROR: could not parse package location: {0}", location)
+      os.exit(1)
+    }
+
+    append(&fl.Imports, imp)
+
+    for file in pkg.files {
+      for decl in pkg.files[file].decls {
+        if v, ok := decl.derived_stmt.(^ast.Value_Decl); ok {
+          pname, is_ident := v.names[0].derived_expr.(^ast.Ident)
+          p,  is_proc  := v.values[0].derived_expr.(^ast.Proc_Lit)
+          if is_proc && is_ident && has_test_attr(v) {
+            f: Function
+            f.Pkg = imp.Id
+            f.Name = pname.name
+            append(&fl.TestFunctions, f) 
+          }
+        }
+      }
+    }
+
+  }
+
+  return fl 
 }
 
 DEFAULT_OPTIONS :RunnerOptions: { true, }
@@ -115,5 +187,4 @@ extract_test_location :: proc(test_collection: string, proc_name: string) -> Tes
   }
   return {}
 }
-
 
