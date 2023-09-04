@@ -1,21 +1,20 @@
 include config.mk
 
 
-.PHONY: test clean test-runner
+.PHONY: clean 
 
 default: run_dbg
 
-test:
-	odin test $(test_dir) $(hlc) 
+test: test-runner $(tests-src) $(hlc-src)
+	@odin run ./tmp_test.odin -file $(hlc) $(tests)
 
-release:
+release: $(hlc-src)
 	odin build $(example) $(hlc) -out:hlc_usage
 
-test-runner:
-	odin run $(test-runner) $(hlc) $(tests)
-	odin run ./tmp_test.odin -file $(hlc) $(tests)
+test-runner: $(hlc-test-src) $(test-runner-src)
+	@odin run $(test-runner) $(hlc) $(tests)
 
-debug:
+debug: $(hlc-src)
 	odin build $(example) -debug $(hlc) -out:hlc_usage_dbg
 
 run: release
